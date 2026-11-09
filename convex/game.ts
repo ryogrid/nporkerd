@@ -545,6 +545,10 @@ export const getTableState = query({
     dealerSeat: v.optional(v.number()),
     currentTurnSeat: v.optional(v.number()),
     turnDeadline: v.optional(v.number()),
+    // 07 §2.4 needs the between-hands countdown "from the projection": set when
+    // a hand just finished and the room is still `playing` (the server's own
+    // NEXT_HAND_DELAY_MS schedule, expressed as a deadline).
+    nextHandAt: v.optional(v.number()),
     yourTurn: v.boolean(),
     legal: v.optional(
       v.object({
@@ -621,6 +625,9 @@ export const getTableState = query({
         ? null
         : await ctx.db.get("hands", room.currentHandId);
     const handLive = handDoc !== null && handDoc.stage !== "finished";
+    // Presentational deadlines (turn clock, next-hand countdown) are expressed
+    // against this server timestamp; the client only ever measures from it.
+    const now = Date.now();
 
     // The hand whose result may be shown (08 §4 `lastHandResult`).
     let resultHand: Doc<"hands"> | null = null;
@@ -747,6 +754,10 @@ export const getTableState = query({
         : {}),
       yourTurn,
       ...(legal === undefined ? {} : { legal }),
+      // 07 §2.4: "Next hand in Ns" as a server timestamp, never client-measured
+      ...(handDoc !== null && handDoc.stage === "finished" && room.status === "playing"
+        ? { nextHandAt: (handDoc.finishedAt === undefined || handDoc.finishedAt === null ? now : handDoc.finishedAt) + NEXT_HAND_DELAY_MS }
+        : {}),
       seats: seatViews,
       ...(lastHandResult === undefined ? {} : { lastHandResult }),
     };

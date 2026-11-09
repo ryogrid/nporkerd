@@ -134,18 +134,104 @@ Deviations & decisions (Phase 4):
 
 ## Phase 7 — Frontend pages and components (`07`)
 
-- [ ] App shell: `ConvexProvider`, auth context (`sessionStorage` token, `me` query gate), route switching for `/register`, `/login`, `/lobby`, `/room/:roomId`. (M)
-- [ ] `lib/keys.ts`: keypair generation, key-file download format, key-file parse, fingerprint computation. (S)
-- [ ] RegisterPage + PrivateKeyDisplay: mandatory-download/copy UI, acknowledgement checkbox gating Continue, auto-login after registration. (M)
-- [ ] LoginPage: paste + file upload, local fingerprint display, generic error text. (S)
-- [ ] LobbyPage: balance/faucet/logout header, reactive public room list, CreateRoomDialog with all settings from `05 §2`. (M)
-- [ ] RoomPage: passphrase gate for private rooms; join → seat selection → sit-down confirm. (M)
-- [ ] PokerTable + SeatView + CardView: seat layout for 2–9 seats, dealer button, street bets, turn highlight + countdown from `turnDeadline`, board and pots display, last-action ticker. (L)
-- [ ] ActionBar: renders only from the projection's `legal` block; raise slider + numeric input clamped to `[minRaiseTo, maxRaiseTo]`; all-in confirm not required (single click) but button is visually distinct. (M)
-- [ ] Showdown presentation: revealed cards flip, winners and amounts from `lastHandResult`; between-hands panel (countdown, sit-out toggle, top-up, stand-up; host controls for the host). (M)
-- [ ] ChatPanel with optimistic send; auto-scroll behaviour per `07 §2.4`; 500-char counter. (S)
-- [ ] Responsive pass (360 px) and keyboard access to actions. (S)
-- Acceptance: the full smoke flow of `09 §5.4` passes manually in two browser profiles against the **dev** deployment.
+- [x] App shell: `ConvexProvider` in `src/main.tsx` (Phase 0), `useSession()` auth
+  context in `src/lib/auth.tsx` (token in `sessionStorage`, `auth.me` doubles as the
+  profile header and the session-validity gate), state-based router in `src/App.tsx`
+  for `/register`, `/login`, `/lobby`, `/room/:roomId`.
+  - the current path is one `useState` seeded from `location.pathname`; pages receive
+    `navigate: (path: string) => void` so a hand-off never forces a reload, while
+    anchors keep real `href`s (`/room/<id>`) so the static host's SPA fallback makes
+    a reload work (07 §1 "use real paths").
+  - lobby/room render only for a validated session; otherwise the register/login
+    chooser is shown. A rejected `me` clears the stale token (07 §1).
+  - the stylesheet is one template string (`src/lib/themeCss.ts`) rendered as a
+    single `<style>` element — CSS only, no image assets (07 §1).
+- [x] `src/lib/keys.ts`: keypair generation (`@noble/ed25519` + sync SHA-512 wiring,
+  same as the server's `convex/lib/ed5519.ts`), key-file body (username/key/
+  fingerprint/loss warning), key-file parse (`npk_` token extraction), fingerprint
+  = first 10 hex of SHA-256 of the base64url public key (03 §2, verified equal to the
+  server's `auth.ts` fingerprint).
+- [x] `RegisterPage` + `PrivateKeyDisplay`: username validated locally (3–20,
+  `[A-Za-z0-9_]`) → local keypair → `auth.register` → key reveal in a read-only
+  area with Copy + Download (`nporkerd-key-<username>.txt`), the fingerprint, the
+  loss warning, and an acknowledgement checkbox that gates a disabled-until-checked
+  Continue → auto-login through the `loginWithKeypair` round-trip → lobby.
+  - `loginWithKeypair` lives in `src/lib/auth.tsx` — the client helper the backend
+    comment names; `auth.login` *returns* its rejection (`{ ok: false, code }`) so
+    the attempt counter survives rollback, and the helper re-raises it as the
+    `{ code, data }` payload shape `errorCopy.ts` reads.
+  - the private key is component state only: shown once, dropped after login, never
+    written to storage (03 §3 final paragraph).
+- [x] `LoginPage`: username + key by paste or key-file upload, local fingerprint of
+  the pasted key displayed before the server is involved (03 §4.2), and one generic
+  sentence for every failure (03 §4.3).
+- [x] `LobbyPage`: header (username, `BalanceBadge` bankroll + faucet eligibility,
+  faucet button only when the rule allows, logout → `/login`), reactive
+  `rooms.listPublicRooms` rows (no polling), `CreateRoomDialog` with every setting of
+  05 §2 and its default; the passphrase field only appears for a private room and
+  says it can never be shown again.
+- [x] `RoomPage`: closed rooms redacted (05 §7), private non-members see only the
+  passphrase prompt (05 §2: the link locates, the passphrase lets in), public
+  non-members see the summary + join, members get the table + chat + the between-hands
+  panel. Join → choose a free seat → sit down are separate explicit steps ("no
+  surprise chip movement", 07 §2.4); host controls (start/end/close) render only for
+  the host.
+- [x] `PokerTable` + `SeatView` + `CardView`: 2–9 seats on an elliptical felt (anchors
+  computed by index, index 0 at the top), dealer chip, this street's bet in front of
+  the player, turn highlight *and* label, countdown ring driven by the projection's
+  `turnDeadline`, board + pots (side pots listed), one-line last-action ticker, hand
+  number, `lastHandResult` winners/amounts/hand-rank label.
+  - cards are CSS-only glyphs (`♠♥♦♣`, red suits per 04 §2); hidden hands render as
+    card backs — the projection never sends hidden numbers (00 §5), so the client
+    has nothing to guess.
+- [x] `ActionBar`: renders only under the projection's `legal` block (not our turn
+  → nothing offered), Fold/Check/Call/Raise-to/All-in as real keyboard-reachable
+  `<button>`s, `allIn` visually distinct (single click, no confirm per TODO note),
+  raise amount = typed numeric input + "Set amount" + ±1/±10 nudges, mirrored by a
+  fill bar; the client duplicates no rules beyond clamping to
+  `[minRaiseTo, maxRaiseTo]`, and a rejected action surfaces as transient copy, never
+  as if it ran (07 §2.4).
+- [x] Showdown presentation: revealed opponents' pairs flip (CSS keyframes +
+  `prefers-reduced-motion` off-switch, plus the text label "shown at showdown" —
+  colour/motion is never the only signal), winners/amounts from `lastHandResult`,
+  between-hands panel (next-hand countdown from the projection, sit-out toggle,
+  top-up, stand-up, host controls).
+- [x] `ChatPanel`: the reactive `chat.listMessages` window with the **only**
+  optimistic update in the SPA (`withOptimisticUpdate` appends the row locally, the
+  query confirms it; 07 §3), bodies rendered as text nodes, 500-char counter.
+- [x] Responsive pass: breakpoints at 860 px and 360 px (chat collapses below the
+  table via `.np-room-grid` → one column); action buttons reachable by keyboard;
+  the raise input accepts typed amounts.
+- [ ] Acceptance: the full smoke flow of `09 §5.4` in two browser profiles against the
+  dev deployment. Deferred with the Phase 8/9 playtests — verifying it needs
+  `convex dev`, which is out of scope here (validation stays `npm run typecheck`
+  + `npm run test`, and the SPA builds: `npm run build` bundles 113 modules).
+
+### Deviations (Phase 7)
+- No `convex/http.ts`: `convex/convex.config.ts` mounts staticHosting at `httpPrefix:
+  "/"` and that component registers its own routes ("fastest serving mode"); adding
+  08 §6's `registerStaticRoutes` would double-register the catch-all. The client side
+  of 08 §6 therefore needs no app-owned HTTP file.
+- `getTableState` gained one additive field, `nextHandAt?: number`: 07 §2.4 wants the
+  between-hands countdown "from the projection" but 08 §4 had no deadline for it
+  (`NEXT_HAND_DELAY_MS` from the hand's `finishedAt`). Still a deadline, so the client
+  never measures the delay itself.
+- Raise control: a numeric `<input>` + "Set amount" + nudges + a fill bar instead of a
+  draggable slider — a dragged range input cannot be read back from inside React, and
+  07 §5 only demands that typed amounts are accepted. Bounds are the server's.
+- `ChatPanel` renders the newest 16 of the 100-message window, bottom-pinned by CSS,
+  as the approximation of 07 §2.4's auto-scroll; the full window is always available
+  through the query.
+- The optimistic chat row carries a fixed placeholder id (`Id` values cannot be minted
+  client-side) and is filtered out before re-appending, so a replay of the update cannot
+  duplicate it; the server's document replaces it when queries converge.
+- Presence: `PresenceTicker` beats `users.heartbeat` every 30 s (08 §2) with a client
+  constant, deliberately not in `convex/lib/constants.ts` (the server never reads it);
+  it is the only non-presentational client timer (07 §3 says the rest are).
+- Private key handling in `LoginPage`: file upload reads the DOM `input`'s `files` and
+  `file.text()` locally, so the key never crosses to the server (03 §4).
+- Route ids arrive as strings from the URL: cast `as Id<"rooms">` before calling
+  projections/mutations; the server re-checks membership regardless.
 
 ## Phase 8 — Hardening and game-feel QA
 
