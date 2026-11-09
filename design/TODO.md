@@ -92,9 +92,9 @@ Deviations & decisions (Phase 4):
 - [x] Replace Phase 3 stubs: mid-hand `standUp`/`leaveRoom` fold through the engine first (`foldMidHand` in `game.ts`; `endGame`/`closeRoom` still refuse live hands).
 - [x] `crons.ts` + internal cleanup: hourly; expired sessions/challenges deleted; `waiting` rooms idle 6 h closed (members cashed out); offline > 10 min `seated` players stood up in non-playing rooms.
   - `cleanupExpired` is an internal **action** (08 §4) so it delegates to internal query/mutations (`sweepForCleanup`, `purgeEphemeral`, `closeStaleRoom`, `standUpIdleSeats`).
-- [ ] Concurrency test: fire two `act` mutations for the same turn concurrently; exactly one applies. (S)
-- [ ] Security review checklist (release blocker): no public function returns a `hands` document; `getTableState` output for a non-showdown opponent contains no `holeCards`; the string `deck` appears in no return value — add an automated test asserting the projection shape for a mid-hand opponent view. (M)
-- [ ] Acceptance: a scripted two-player hand runs preflop→showdown driven only through public mutations, with timers firing when actions are withheld.
+- [x] Concurrency test: a second `act` for the same turn throws `NOT_YOUR_TURN` (Convex serialises the mutations; the re-read state has moved on).
+- [x] Security review checklist (release blocker): automated test asserts a mid-hand opponent projection carries no `deck`/`holeCards`/`stackStart`/`betTotal`/`hasActed`/`eligibleUserIds`/`turnSeq`/`startedAt`, that pot entries expose `amount` only, and that the viewer's own seat still shows 2 cards. Grep over `game.ts` confirms no public function returns a `hands` document (only `getTableState`'s projection).
+- [x] Acceptance: scripted heads-up hand preflop→showdown through `startGame` + `act` only; separate tests drive the turn clock (`_scheduled_functions` + fake timers), the auto-sit-out rule, next-hand continuation, and the all-in runout pacing (burn accounting: 52 − 12 = 40 cards left).
 
 ### Deviations (Phase 5)
 - `hands` doc gains `timeoutStats` (the auto-sit-out tally of 04 §9 has no field in 02 §6); `ante` stays 0 because `rooms` has no ante setting (02 §4); `players[].stack` is not stored, derived as `stackStart − betTotal`.

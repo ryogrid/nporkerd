@@ -403,8 +403,12 @@ async function beginHand(
     ante: 0, // 02 §4 has no ante setting
     randomInt: randomInt, // 04 §2: crypto RNG in production
   });
+  const firstTurn = state.turnSeat;
   const handId = await ctx.db.insert("hands", {
     ...stateFields(state, now),
+    ...(room.turnSeconds > 0 && firstTurn >= 0
+      ? { turnDeadline: now + room.turnSeconds * 1000 }
+      : {}),
     roomId,
     handNumber: state.handNumber,
     turnSeq: 0,
