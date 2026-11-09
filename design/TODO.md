@@ -52,13 +52,32 @@ L ≈ several days.
 
 ## Phase 4 — Poker engine, pure TypeScript (`04`)
 
-- [ ] `convex/game/cards.ts`: encoding helpers (`rankOf`, `suitOf`, `toString`), `createDeck()`. (S)
-- [ ] `convex/game/evaluator.ts`: 5-card evaluation + best-of-7 via subset maximum; labels. Test vectors: wheel straight, steel wheel, quads vs full house ordering, two-pair kicker, board-plays tie, flush tiebreak, full-house-over-full-house. (M)
-- [ ] `convex/game/pots.ts`: side-pot construction from `betTotal`s; distribution incl. split pots and odd-chip rule (`04 §7`). Tests: three-way all-in at different stacks, uncalled-bet return, split with odd chip. (M)
-- [ ] `convex/game/engine.ts`: state constructors (`startHand` incl. blinds and heads-up rules from `04 §3`), `legalActions(state, userId)`, `applyAction` (fold/check/call/raiseTo/allIn, full-raise vs short-all-in reopening rules from `04 §5`), street completion and advancement, showdown, win-by-fold. (L)
-- [ ] Engine property tests: chip conservation over randomised action sequences with a seeded RNG; every terminal state distributes exactly the pot. (M)
-- [ ] Edge-case tests from the table in `04 §9` that are engine-level (blinds all-in for less, BB wins by fold, short all-in does not reopen). (M)
-- Acceptance: the whole `convex/game/` suite passes without importing any Convex API (grep the imports to prove it).
+- [x] `convex/game/cards.ts`: encoding helpers (`rankOf`, `suitOf`, `toString`), `createDeck()`. (S)
+- [x] `convex/game/evaluator.ts`: 5-card evaluation + best-of-7 via subset maximum; labels. Test vectors: wheel straight, steel wheel, quads vs full house ordering, two-pair kicker, board-plays tie, flush tiebreak, full-house-over-full-house. (M)
+- [x] `convex/game/pots.ts`: side-pot construction from `betTotal`s; distribution incl. split pots and odd-chip rule (`04 §7`). Tests: three-way all-in at different stacks, uncalled-bet return, split with odd chip. (M)
+- [x] `convex/game/engine.ts`: state constructors (`startHand` incl. blinds and heads-up rules from `04 §3`), `legalActions(state, userId)`, `applyAction` (fold/check/call/raiseTo/allIn, full-raise vs short-all-in reopening rules from `04 §5`), street completion and advancement, showdown, win-by-fold. (L)
+- [x] Engine property tests: chip conservation over randomised action sequences with a seeded RNG; every terminal state distributes exactly the pot. (M)
+- [x] Edge-case tests from the table in `04 §9` that are engine-level (blinds all-in for less, BB wins by fold, short all-in does not reopen). (M)
+- Acceptance: the whole `convex/game/` suite passes without importing any Convex API (grep the imports to prove it). ✓ — 33 tests green; `game/` files import only each other (+ vitest in `*.test.ts`).
+
+Deviations & decisions (Phase 4):
+- Pure-TS engine takes a `randomInt: RandomInt` callback in `startHand` (injection
+  for deterministic tests; the Convex shell passes `convex/lib/rng.randomInt`).
+- Action model: `raiseTo` amount = new total bet level; all-in a distinct kind.
+  Below-minimum `raiseTo` accepted only at the player's all-in maximum (short
+  all-in, 04 §5) and does not reopen betting.
+- Chip accounting: per-player `betStreet`/`betTotal` (blinds = live bets per 04 §5:
+  preflop `check` legal only when `toCall == 0`; completing the BB is `call`).
+- `advanceStreetIfNeeded` auto-runs out remaining streets when no actor remains
+  (all-in runout) and finishes when one contender remains (win by fold; uncalled
+  bet returned through the pot-band model, 04 §7).
+- Terminal states carry `result.shares` (per-user chips) so the Convex shell can
+  credit seat stacks with exact conservation; the engine never mutates seats.
+- Heads-up: button posts SB and acts first preflop; non-button first postflop.
+- Determinism property test re-seeds a fresh RNG per hand (same seed ⇒ same deal).
+- Engine throws `{ code, data }` light objects (mirrors ConvexError shape for the
+  shell's `ILLEGAL_ACTION` mapping); no `showdown` stage value is ever set — the
+  reducer goes `river -> finished` directly, keeping the schema literal for later.
 
 ## Phase 5 — Game flow on Convex (`04 §8–9`, `08 §4`)
 
