@@ -6,9 +6,30 @@
     <title>nporkerd — Texas Hold'em</title>
     <meta
       name="description"
-      content="nporkerd: online multiplayer Texas Hold'em poker on Convex"
+      content="Play live no-limit Texas Hold'em with friends, right in your browser. Free, no downloads, play-money chips."
     />
     <meta name="theme-color" content="#0b1210" />
+    <!-- Open Graph / Twitter cards. Crawlers don't run JS, so these live in the
+         static HTML (served for every path, including /room/:id invite links).
+         Image URLs must be absolute: they point at the production site.
+         Image source: design/og/ (re-render with design/og/render.cjs). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="nporkerd" />
+    <meta property="og:title" content="nporkerd — Texas Hold'em with friends" />
+    <meta property="og:description" content="Open a table, share the link, and play live no-limit hold'em in your browser. Free, no downloads, play-money chips." />
+    <meta property="og:url" content="https://merry-butterfly-152.convex.site/" />
+    <meta property="og:image" content="https://merry-butterfly-152.convex.site/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="nporkerd — a poker table with cards and chips: Texas Hold'em with friends, right in your browser" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ja_JP" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="nporkerd — Texas Hold'em with friends" />
+    <meta name="twitter:description" content="Open a table, share the link, and play live no-limit hold'em in your browser. Free, no downloads, play-money chips." />
+    <meta name="twitter:image" content="https://merry-butterfly-152.convex.site/og-image.png" />
+    <meta name="twitter:image:alt" content="nporkerd — a poker table with cards and chips: Texas Hold'em with friends, right in your browser" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

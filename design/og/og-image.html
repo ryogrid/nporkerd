@@ -1,0 +1,329 @@
+<!doctype html>
+<!-- nporkerd Open Graph image source (1200×630). Everything is vector: inline
+     SVG for the table, cards and chips, HTML/CSS for the type. Render to
+     public/og-image.png with design/og/render.cjs. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>nporkerd OG image</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,700;0,800;1,700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0b1210;
+    --text: #eef2ec;
+    --text-dim: #c9d4cc;
+    --gold: #e3b955;
+    --gold-2: #b98a2c;
+    --font: "Inter", system-ui, sans-serif;
+    --font-display: "Playfair Display", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  .og {
+    position: relative; width: 1200px; height: 630px; overflow: hidden;
+    background: var(--bg); color: var(--text); font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  .og svg.art { position: absolute; inset: 0; }
+  .copy { position: absolute; left: 64px; top: 58px; width: 560px; }
+  .brand {
+    display: flex; align-items: center; gap: 22px;
+    font-family: var(--font-display); font-weight: 800; font-size: 104px;
+    line-height: 1; letter-spacing: .005em; color: var(--text);
+    text-shadow: 0 4px 18px rgba(0,0,0,.6);
+  }
+  .brand em { font-style: normal; color: var(--gold); }
+  .brand-mark { width: 96px; height: 96px; flex: none; filter: drop-shadow(0 6px 14px rgba(0,0,0,.55)); }
+  .tag {
+    margin: 64px 0 0; font-family: var(--font-display); font-weight: 700;
+    font-size: 62px; line-height: 1.04; letter-spacing: -.005em;
+    text-shadow: 0 3px 14px rgba(0,0,0,.7);
+  }
+  .tag em { font-style: italic; color: var(--gold); }
+  .sub {
+    margin: 14px 0 0; font-size: 36px; font-weight: 600; color: var(--text-dim);
+    letter-spacing: -.005em; text-shadow: 0 2px 10px rgba(0,0,0,.8);
+  }
+  .pill {
+    position: absolute; left: 64px; bottom: 60px;
+    display: inline-flex; align-items: center; gap: 14px;
+    padding: 12px 24px; border-radius: 999px;
+    font-size: 27px; font-weight: 700; color: var(--text);
+    background: rgba(9, 15, 13, .78);
+    border: 2px solid rgba(227, 185, 85, .55);
+    box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  }
+  .pill i { font-style: normal; color: var(--gold); font-weight: 800; }
+</style>
+</head>
+<body>
+<div class="og" id="og">
+<svg class="art" width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- suits, drawn in a 100×100 box -->
+    <symbol id="suit-s" viewBox="0 0 100 100"><path d="M50 4C50 4 92 38 92 62C92 79 77 87 64 83C58 81 54 77 52 72C53 83 57 90 66 96H34C43 90 47 83 48 72C46 77 42 81 36 83C23 87 8 79 8 62C8 38 50 4 50 4Z" /></symbol>
+    <symbol id="suit-h" viewBox="0 0 100 100"><path d="M50 94C20 72 5 54 5 35C5 19 17 7 31 7C40 7 47 12 50 21C53 12 60 7 69 7C83 7 95 19 95 35C95 54 80 72 50 94Z" /></symbol>
+    <symbol id="suit-d" viewBox="0 0 100 100"><path d="M50 3C60 20 72 36 88 50C72 64 60 80 50 97C40 80 28 64 12 50C28 36 40 20 50 3Z" /></symbol>
+    <symbol id="suit-c" viewBox="0 0 100 100">
+      <circle cx="50" cy="27" r="20" /><circle cx="27" cy="58" r="20" /><circle cx="73" cy="58" r="20" />
+      <circle cx="50" cy="52" r="12" />
+      <path d="M50 50C50 72 46 86 34 96H66C54 86 50 72 50 50Z" />
+    </symbol>
+    <path id="sparkle" d="M0 -1C.1 -.16 .16 -.1 1 0C.16 .1 .1 .16 0 1C-.1 .16 -.16 .1 -1 0C-.16 -.1 -.1 -.16 0 -1Z" />
+
+    <linearGradient id="cardFace" x1="0" y1="0" x2=".6" y2="1">
+      <stop offset="0" stop-color="#ffffff" /><stop offset="1" stop-color="#ece9e0" />
+    </linearGradient>
+    <linearGradient id="cardBack" x1="0" y1="0" x2=".6" y2="1">
+      <stop offset="0" stop-color="#b5323a" /><stop offset="1" stop-color="#8f1d25" />
+    </linearGradient>
+    <pattern id="backHatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="10" height="10" fill="none" />
+      <rect width="3" height="10" fill="rgba(255,255,255,.10)" />
+      <rect width="10" height="3" fill="rgba(255,255,255,.10)" />
+    </pattern>
+
+    <!-- card faces, 140×196 -->
+    <symbol id="card-As" viewBox="0 0 140 196">
+      <rect x="1" y="1" width="138" height="194" rx="15" fill="url(#cardFace)" stroke="rgba(0,0,0,.18)" stroke-width="2" />
+      <g fill="#1b1d22">
+        <text x="21" y="45" text-anchor="middle" font-family="Inter" font-weight="800" font-size="38">A</text>
+        <use href="#suit-s" x="8" y="51" width="26" height="26" />
+        <g transform="rotate(180 70 98)">
+          <text x="21" y="45" text-anchor="middle" font-family="Inter" font-weight="800" font-size="38">A</text>
+          <use href="#suit-s" x="8" y="51" width="26" height="26" />
+        </g>
+        <use href="#suit-s" x="28" y="56" width="84" height="84" />
+      </g>
+    </symbol>
+    <symbol id="card-Kh" viewBox="0 0 140 196">
+      <rect x="1" y="1" width="138" height="194" rx="15" fill="url(#cardFace)" stroke="rgba(0,0,0,.18)" stroke-width="2" />
+      <g fill="#d2373f">
+        <text x="21" y="45" text-anchor="middle" font-family="Inter" font-weight="800" font-size="38">K</text>
+        <use href="#suit-h" x="8" y="51" width="26" height="26" />
+        <g transform="rotate(180 70 98)">
+          <text x="21" y="45" text-anchor="middle" font-family="Inter" font-weight="800" font-size="38">K</text>
+          <use href="#suit-h" x="8" y="51" width="26" height="26" />
+        </g>
+        <rect x="36" y="38" width="68" height="120" rx="8" fill="none" stroke="#d2373f" stroke-opacity=".35" stroke-width="2" />
+        <text x="70" y="124" text-anchor="middle" font-family="Playfair Display" font-weight="700" font-size="86">K</text>
+        <use href="#suit-h" x="58" y="130" width="24" height="24" />
+      </g>
+    </symbol>
+    <symbol id="card-Qh" viewBox="0 0 140 196">
+      <rect x="1" y="1" width="138" height="194" rx="15" fill="url(#cardFace)" stroke="rgba(0,0,0,.18)" stroke-width="2" />
+      <g fill="#d2373f">
+        <text x="23" y="47" text-anchor="middle" font-family="Inter" font-weight="800" font-size="42">Q</text>
+        <use href="#suit-h" x="9" y="54" width="28" height="28" />
+        <text x="70" y="132" text-anchor="middle" font-family="Playfair Display" font-weight="700" font-size="92">Q</text>
+      </g>
+    </symbol>
+    <symbol id="card-Js" viewBox="0 0 140 196">
+      <rect x="1" y="1" width="138" height="194" rx="15" fill="url(#cardFace)" stroke="rgba(0,0,0,.18)" stroke-width="2" />
+      <g fill="#1b1d22">
+        <text x="23" y="47" text-anchor="middle" font-family="Inter" font-weight="800" font-size="42">J</text>
+        <use href="#suit-s" x="9" y="54" width="28" height="28" />
+        <text x="70" y="132" text-anchor="middle" font-family="Playfair Display" font-weight="700" font-size="92">J</text>
+      </g>
+    </symbol>
+    <symbol id="card-Td" viewBox="0 0 140 196">
+      <rect x="1" y="1" width="138" height="194" rx="15" fill="url(#cardFace)" stroke="rgba(0,0,0,.18)" stroke-width="2" />
+      <g fill="#d2373f">
+        <text x="25" y="47" text-anchor="middle" font-family="Inter" font-weight="800" font-size="36" letter-spacing="-1">10</text>
+        <use href="#suit-d" x="11" y="54" width="28" height="28" />
+        <use href="#suit-d" x="34" y="58" width="72" height="72" />
+      </g>
+    </symbol>
+    <symbol id="card-back" viewBox="0 0 140 196">
+      <rect x="1" y="1" width="138" height="194" rx="15" fill="#f4efe4" />
+      <rect x="9" y="9" width="122" height="178" rx="9" fill="url(#cardBack)" />
+      <rect x="9" y="9" width="122" height="178" rx="9" fill="url(#backHatch)" />
+      <circle cx="70" cy="98" r="22" fill="rgba(255,255,255,.18)" />
+      <use href="#suit-s" x="56" y="84" width="28" height="28" fill="rgba(255,255,255,.55)" />
+    </symbol>
+
+    <!-- lighting -->
+    <radialGradient id="bgGlow" cx="62%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#1d3a2e" />
+      <stop offset=".55" stop-color="#0f1c17" />
+      <stop offset="1" stop-color="#0b1210" />
+    </radialGradient>
+    <radialGradient id="felt" cx="50%" cy="38%" r="62%">
+      <stop offset="0" stop-color="#22a06a" />
+      <stop offset=".42" stop-color="#13704a" />
+      <stop offset="1" stop-color="#0a3f29" />
+    </radialGradient>
+    <linearGradient id="rail" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6e4628" />
+      <stop offset=".35" stop-color="#5c3a22" />
+      <stop offset=".75" stop-color="#3a2416" />
+      <stop offset="1" stop-color="#22140b" />
+    </linearGradient>
+    <radialGradient id="spot" cx="50%" cy="0%" r="100%">
+      <stop offset="0" stop-color="#fff6d8" stop-opacity=".20" />
+      <stop offset=".6" stop-color="#fff6d8" stop-opacity=".05" />
+      <stop offset="1" stop-color="#fff6d8" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="vignette" cx="60%" cy="48%" r="75%">
+      <stop offset=".55" stop-color="#000" stop-opacity="0" />
+      <stop offset="1" stop-color="#000" stop-opacity=".6" />
+    </radialGradient>
+    <linearGradient id="scrim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0b1210" stop-opacity=".92" />
+      <stop offset=".36" stop-color="#0b1210" stop-opacity=".7" />
+      <stop offset=".55" stop-color="#0b1210" stop-opacity="0" />
+    </linearGradient>
+    <radialGradient id="glint" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffe8a6" stop-opacity=".9" />
+      <stop offset="1" stop-color="#ffe8a6" stop-opacity="0" />
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14" /></filter>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity=".55" />
+    </filter>
+    <filter id="smallShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity=".45" />
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="630" fill="url(#bgGlow)" />
+
+  <!-- the table -->
+  <g id="table">
+    <ellipse cx="900" cy="372" rx="452" ry="232" fill="#000" opacity=".55" filter="url(#soft)" />
+    <ellipse cx="900" cy="346" rx="444" ry="222" fill="url(#rail)" />
+    <ellipse cx="900" cy="340" rx="436" ry="212" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="2" />
+    <ellipse cx="900" cy="346" rx="410" ry="196" fill="#b98a2c" />
+    <ellipse cx="900" cy="347" rx="405" ry="192" fill="url(#felt)" />
+    <ellipse cx="900" cy="347" rx="405" ry="192" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="10" />
+    <ellipse cx="900" cy="350" rx="330" ry="146" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="2.5" />
+    <text x="900" y="452" text-anchor="middle" font-family="Playfair Display" font-style="italic" font-weight="700" font-size="40" fill="rgba(255,255,255,.07)" letter-spacing="3">nporkerd</text>
+  </g>
+
+  <!-- spotlight over the felt -->
+  <ellipse cx="880" cy="250" rx="520" ry="330" fill="url(#spot)" />
+
+  <!-- community cards lying on the felt (foreshortened) -->
+  <g filter="url(#smallShadow)">
+    <g transform="translate(900 300) scale(1 .66)">
+      <use href="#card-Qh" x="-215" y="-49" width="70" height="98" transform="rotate(-3 -180 0)" />
+      <use href="#card-Js" x="-129" y="-49" width="70" height="98" transform="rotate(2 -94 0)" />
+      <use href="#card-Td" x="-43" y="-49" width="70" height="98" transform="rotate(-1 -8 0)" />
+      <use href="#card-back" x="43" y="-49" width="70" height="98" transform="rotate(3 78 0)" />
+      <use href="#card-back" x="129" y="-49" width="70" height="98" transform="rotate(-2 164 0)" />
+    </g>
+  </g>
+
+  <!-- dealer button -->
+  <g transform="translate(1140 300)" filter="url(#smallShadow)">
+    <ellipse cx="0" cy="6" rx="24" ry="13" fill="#b9b3a4" />
+    <ellipse cx="0" cy="0" rx="24" ry="13" fill="#f4efe4" />
+    <text x="0" y="6" text-anchor="middle" font-family="Inter" font-weight="800" font-size="17" fill="#1b1d22" transform="scale(1 .9)">D</text>
+  </g>
+
+  <!-- chip stacks are generated into this group (see script) -->
+  <g id="chips"></g>
+
+  <!-- hole cards in the foreground -->
+  <g filter="url(#cardShadow)">
+    <use href="#card-As" x="0" y="0" width="150" height="210" transform="translate(842 352) rotate(-13 75 105)" />
+    <use href="#card-Kh" x="0" y="0" width="150" height="210" transform="translate(948 340) rotate(9 75 105)" />
+  </g>
+
+  <!-- vignette and the scrim behind the type -->
+  <rect width="1200" height="630" fill="url(#vignette)" />
+  <rect width="1200" height="630" fill="url(#scrim)" />
+
+  <!-- gold glints -->
+  <g fill="#ffe2a0">
+    <circle cx="1088" cy="356" r="26" fill="url(#glint)" opacity=".7" />
+    <use href="#sparkle" transform="translate(1088 356) scale(16)" />
+    <circle cx="868" cy="372" r="20" fill="url(#glint)" opacity=".55" />
+    <use href="#sparkle" transform="translate(868 372) scale(11)" />
+    <use href="#sparkle" transform="translate(1110 150) scale(9)" opacity=".85" />
+    <use href="#sparkle" transform="translate(705 150) scale(7)" opacity=".7" />
+    <use href="#sparkle" transform="translate(1140 520) scale(7)" opacity=".6" />
+    <use href="#sparkle" transform="translate(178 60) scale(10)" opacity=".9" />
+    <circle cx="640" cy="560" r="2.5" opacity=".5" />
+    <circle cx="1030" cy="110" r="2" opacity=".6" />
+    <circle cx="760" cy="470" r="2" opacity=".5" />
+  </g>
+</svg>
+
+<div class="copy">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+      <defs>
+        <radialGradient id="coin" cx="35%" cy="30%" r="75%">
+          <stop offset="0" stop-color="#ffe8a6" />
+          <stop offset=".55" stop-color="#e3b955" />
+          <stop offset="1" stop-color="#b98a2c" />
+        </radialGradient>
+      </defs>
+      <circle cx="50" cy="50" r="49" fill="rgba(227,185,85,.28)" />
+      <circle cx="50" cy="50" r="45" fill="#0b1210" />
+      <circle cx="50" cy="50" r="41" fill="url(#coin)" />
+      <circle cx="50" cy="50" r="34" fill="none" stroke="#8a6420" stroke-opacity=".45" stroke-width="2" stroke-dasharray="4 4" />
+      <use href="#suit-s" x="27" y="26" width="46" height="46" fill="#1b1203" />
+    </svg>
+    <span>npork<em>erd</em></span>
+  </div>
+  <p class="tag">Texas Hold’em<br /><em>with friends,</em></p>
+  <p class="sub">right in your browser</p>
+</div>
+<div class="pill">Free <i>·</i> No downloads <i>·</i> Play-money chips</div>
+</div>
+
+<script>
+  // Chip stacks: angled-view poker chips (top ellipse + striped edge), stacked.
+  const NS = "http://www.w3.org/2000/svg";
+  const COLORS = { red: "#c43a3a", black: "#2a2c31", gold: "#c7952f", blue: "#2f63b8" };
+  function shade(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v * f));
+    return `rgb(${c.join(",")})`;
+  }
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    parent.appendChild(e);
+    return e;
+  }
+  function chip(g, x, y, r, color) {
+    const ry = r * 0.52, h = r * 0.24, base = COLORS[color];
+    const side = `M${x - r} ${y} A${r} ${ry} 0 0 0 ${x + r} ${y} L${x + r} ${y + h} A${r} ${ry} 0 0 1 ${x - r} ${y + h} Z`;
+    el("path", { d: side, fill: shade(base, 0.62) }, g);
+    // edge stripes
+    const arc = `M${x - r} ${y + h / 2} A${r} ${ry} 0 0 0 ${x + r} ${y + h / 2}`;
+    el("path", { d: arc, fill: "none", stroke: "#f4efe4", "stroke-width": h * 0.9, "stroke-dasharray": `${r * 0.22} ${r * 0.5}`, opacity: 0.85 }, g);
+    el("ellipse", { cx: x, cy: y, rx: r, ry, fill: base }, g);
+    el("ellipse", { cx: x, cy: y, rx: r * 0.84, ry: ry * 0.84, fill: "none", stroke: "#f4efe4", "stroke-width": r * 0.2, "stroke-dasharray": `${r * 0.26} ${r * 0.42}` }, g);
+    el("ellipse", { cx: x, cy: y, rx: r * 0.6, ry: ry * 0.6, fill: shade(base, 0.92), stroke: "rgba(255,255,255,.55)", "stroke-width": 1.2, "stroke-dasharray": "3 3" }, g);
+    el("ellipse", { cx: x - r * 0.25, cy: y - ry * 0.35, rx: r * 0.35, ry: ry * 0.22, fill: "rgba(255,255,255,.16)" }, g);
+  }
+  function stack(x, y, r, colors) {
+    const g = el("g", { filter: "url(#smallShadow)" }, document.getElementById("chips"));
+    const h = r * 0.24;
+    colors.forEach((c, i) => chip(g, x, y - i * h, r, c));
+  }
+  const rep = (c, n) => Array(n).fill(c);
+  // pot in the middle of the felt
+  stack(760, 410, 24, rep("red", 5));
+  stack(806, 424, 24, rep("black", 7));
+  stack(784, 446, 24, rep("gold", 3));
+  // opponents' stacks across the table
+  stack(640, 300, 19, rep("blue", 6));
+  stack(672, 312, 19, rep("red", 4));
+  stack(1000, 196, 17, rep("gold", 5));
+  stack(1030, 204, 17, rep("black", 3));
+  stack(780, 196, 17, rep("red", 4));
+  // the hero's stacks, right of the hole cards
+  stack(1116, 452, 26, rep("black", 8));
+  stack(1088, 506, 26, rep("blue", 5));
+  stack(1140, 512, 26, rep("gold", 3));
+</script>
+</body>
+</html>

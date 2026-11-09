@@ -65,4 +65,6 @@ Production deploy: `npm run deploy` (`@convex-dev/static-hosting deploy`). It bu
 - **Help page.** `/help` is `pages/HelpPage.tsx`, with content in `i18n/help.ts`; section ids are linked from tips. Screenshots are in `public/help-img/<lang>/`. Retake them when the UI changes noticeably.
 - Styling is plain CSS in `styles.css`, plus per-area files (`styles-entry.css`, `styles-room.css`, `styles-help.css`) imported by their pages: cards, chips and the table are drawn in CSS, and fonts come from Google Fonts in `index.html`. The only image assets are the Help screenshots, and there are no audio files. Sounds are synthesized with WebAudio in `lib/sound.ts`, which `App` unlocks on the first user gesture.
 
+**Social previews (OGP):** the Open Graph and Twitter card tags are static in `index.html` (crawlers don't run JS), with absolute URLs to the production site. The image is `public/og-image.png` (1200×630), drawn as SVG in `design/og/og-image.html`; re-render it with `NODE_PATH=<playwright> node design/og/render.cjs`. If the production domain changes, update the URLs in `index.html`.
+
 **HTTP:** `convex.config.ts` mounts static hosting at `/` and app HTTP routes under `/api`. There is no `convex/http.ts`.
