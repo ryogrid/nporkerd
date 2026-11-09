@@ -26,6 +26,10 @@ export type SeatRow = {
   /** Presentational countdown for this seat's turn (from `turnDeadline`). */
   turnRemainingMs: number | undefined;
   turnTotalMs: number | undefined;
+  /** The projection's hand number: alternates the deal-in animation (07 §3). */
+  handNumber: number | undefined;
+  /** This seat appears in `lastHandResult.winners` (winner pulse + label). */
+  isWinner: boolean;
 };
 
 /** The state sentence: colour is never the only signal (07 §5). */
@@ -56,6 +60,9 @@ export function SeatView({ row }: { row: SeatRow }) {
   if (row.isCurrentTurn) {
     classes.push("turn");
   }
+  if (row.isWinner) {
+    classes.push("winner");
+  }
   const ringStyle = ringFor(row);
   return (
     <span className={classes.join(" ")}>
@@ -65,8 +72,9 @@ export function SeatView({ row }: { row: SeatRow }) {
       {stateText(row) === "" ? null : <span className="np-seat-state">{stateText(row)}</span>}
       {row.online ? null : <span className="np-seat-state">away</span>}
       {row.isCurrentTurn ? <span className="np-seat-turn">{turnText(row)}</span> : null}
-      <CardPair cards={row.holeCards} mine={row.mine} revealed={shownAtShowdown(row)} />
+      <CardPair cards={row.holeCards} mine={row.mine} revealed={shownAtShowdown(row)} hand={row.handNumber} />
       {shownAtShowdown(row) ? <span className="np-seat-state">shown at showdown</span> : null}
+      {row.isWinner ? <span className="np-seat-state">wins this hand</span> : null}
       {row.isDealer ? <span className="np-dealerchip">D</span> : null}
       {ringStyle === undefined ? null : <span className="np-ring" style={ringStyle} />}
       {row.lastAction === undefined ? null : <span className="np-seat-state">{actionLabel(row.lastAction.kind, row.lastAction.amount)}</span>}

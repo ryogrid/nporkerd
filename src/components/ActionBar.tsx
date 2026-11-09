@@ -3,13 +3,16 @@
 // literally the server's — the client duplicates no poker rules. Buttons are
 // real <button>s (keyboard reachable); the raise amount takes a typed number
 // ("Set amount" reads it), fine/coarse nudges, and a slider-style fill bar.
-// A rejected action shows transient copy — it is never drawn as if it ran.
+// A rejected action shows transient copy — it is never drawn as if it ran —
+// and only an accepted act gets its sound cue, so a denial never plays the
+// chip sound (Phase 10).
 import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { errorCopyFor } from "../lib/errorCopy";
 import { formatChips } from "../lib/format";
+import { playCue } from "../lib/sound";
 
 export type LegalBlock = {
   canCheck: boolean;
@@ -40,8 +43,12 @@ export function ActionBar({ legal, roomId, sessionToken }: {
       } else {
         await act({ sessionToken, roomId, kind, amount: raiseTo });
       }
+      // Phase 10 sound: the cue only plays once the server accepted the act,
+      // so it never celebrates a move that did not happen (07 §2.4).
+      playCue(`action-${kind === "raiseTo" ? "raise" : kind === "allIn" ? "allin" : kind}`);
     } catch (e) {
       setNotice(errorCopyFor(e));
+      playCue("deny");
     }
   }
 

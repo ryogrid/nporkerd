@@ -11,6 +11,8 @@ import { api } from "../../convex/_generated/api";
 import { ActionBar } from "../components/ActionBar";
 import { ChatPanel } from "../components/ChatPanel";
 import { PokerTable } from "../components/PokerTable";
+import { SoundControl } from "../components/SoundControl";
+import { SoundCue } from "../components/SoundCue";
 import { errorCopyFor } from "../lib/errorCopy";
 import { formatChips, countdownLabel, secondsLeft } from "../lib/format";
 import { RoomProfile, TableState } from "../lib/projection";
@@ -183,6 +185,13 @@ export function RoomPage({ roomId, token, me, navigate }: {
     ? undefined
     : table.nextHandAt;
   const isHost = room.isHost === true;
+  // Phase 10 audio: one cue per stage transition, keyed (token) by stage **and**
+  // hand number so each new hand gets its own deal cue. Everything is derived
+  // from the projection — the page keeps no game state of its own (07 §3).
+  const stageName = table === undefined ? "" : table.stage;
+  const handNo = table === undefined || table.handNumber === undefined || table.handNumber === null
+    ? 0
+    : table.handNumber;
 
   return (
     <div className="np-page">
@@ -190,6 +199,7 @@ export function RoomPage({ roomId, token, me, navigate }: {
         <div className="np-panel">
           <h2 className="np-title">{room.name}</h2>
           <PokerTable room={room} table={table} yourSeatIndex={room.yourSeatIndex} />
+          <SoundCue cue={audioCue(stageName)} token={`${stageName}:${handNo}`} />
           {table !== undefined && table.yourTurn === true ? (
             <ActionBar legal={table.legal} roomId={roomId} sessionToken={token} />
           ) : (
@@ -235,10 +245,28 @@ export function RoomPage({ roomId, token, me, navigate }: {
           {isHost ? <button type="button" onClick={() => void doEndGame()}>End game</button> : null}
           {isHost ? <button type="button" onClick={() => void doCloseRoom()}>Close room</button> : null}
         </div>
+        <SoundControl />
         <PresenceTicker token={token} roomId={roomId} />
       </div>
     </div>
   );
+}
+
+/**
+ * Which synthesized cue (see `src/lib/sound.ts`) matches a stage. Unknown or
+ * `waiting` means nothing to play.
+ */
+function audioCue(stage: string): string | undefined {
+  if (stage === "preflop") {
+    return "deal";
+  }
+  if (stage === "flop" || stage === "turn" || stage === "river" || stage === "showdown") {
+    return stage;
+  }
+  if (stage === "finished") {
+    return "hand-over";
+  }
+  return undefined;
 }
 
 /** Free seat indices from `getRoom.seats` (05 §3: `seatIndex -1` = unseated). */

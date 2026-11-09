@@ -308,7 +308,39 @@ Deviations & decisions (Phase 4):
 - [ ] Hand-history page per user (from retained `hands` documents).
 - [ ] Spectator mode for room members (read-only table view already falls out of the projection; add join-as-spectator UX copy).
 - [ ] Configurable auto-rebuy.
-- [ ] Sound effects and card animations.
+- [x] Sound effects and card animations (see the notes below).
+  - `src/lib/sound.ts`: cues are **synthesized with the WebAudio API** — the bundle
+    still ships no media files, so static hosting keeps serving one small SPA (07 §1
+    "no image assets", extended to audio). Each cue is 0.05–0.4 s at gain ≤ 0.07, never
+    loops, and nothing is created until the first cue is needed.
+  - cue table: `deal`/`flop`/`turn`/`river`/`showdown`/`hand-over` (stage transitions),
+    `action-check`/`action-call`/`action-raise`/`action-allin`/`action-fold` (only after
+    the server accepted the act — a denial plays `deny`, never the chip sound),
+    `action-chat` (the softest cue), `deny`.
+  - `SoundCue` fires a cue at most once per **token** (stage + hand number from the
+    projection), so the flop cue plays once and the many re-renders during the flop play
+    nothing — no client-side timers (07 §3).
+  - `SoundControl`: a labelled mute button in the lobby and room headers ("sound: on/off"
+    in text), so audio state is legible without listening (07 §5).
+  - animations are CSS-only: hole cards deal in (`np-deal`/`np-deal-alt` alternated on
+    `handNumber`, which restarts a reused element's animation each hand), board cards
+    slide in with an 110 ms stagger from the card's index, showdown reveals keep their
+    `np-flip` turn, winners pulse twice **and** are labelled "wins this hand".
+  - accessibility: `@media (prefers-reduced-motion: reduce)` switches every animation
+    off, each one is paired with a text label, and muting is one click plus text copy.
+
+### Notes (Phase 10 — sound and animation)
+- The mute preference is stored in `localStorage` (`nporkerd.sound`). D-04's
+  `sessionStorage` rule is about the **session token**; a mute switch that reset on every
+  reload would be hostile, and a preference carries no credential.
+- Deal-in animation restarts by alternating two identical-in-spirit keyframe sets keyed
+  on the projection's `handNumber`: a reused DOM element otherwise keeps a finished
+  animation, and the client must not track "did I already animate this" (07 §3).
+- Winner seats are matched to `lastHandResult.winners` **by username**: registration
+  enforces unique names case-insensitively (03 §3/`USERNAME_TAKEN`), so the match is
+  exact. Still only cosmetic — the projection never gates on it.
+- No audio assets, no autoplay: cues exist only as small tone tables, which also keeps
+  the built bundle at ~356 kB instead of adding files to the static-hosting upload.
 - [ ] Moderation basics: host kick (remove a member from the room).
 - [ ] Move passphrase hashing to iterated SHA-256 (D-09 option B) if probing is observed.
 - [ ] Data retention job (D-07 option B) if table growth matters.

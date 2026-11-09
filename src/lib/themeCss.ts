@@ -83,13 +83,37 @@ body { margin: 0; background: #10201a; color: var(--paper); font-family: system-
 .np-cardslot > :nth-child(2) { margin-left: -12px; }
 .np-cardslot.you { width: 66px; }
 .np-cardslot.reveal { width: 66px; }
-/* 07 §2.4: showdown reveals flip; motion is optional, the label carries it too */
+/* 07 §2.4 and the Phase 10 animations: CSS only, and every one of them is
+   paired with a text label (07 §5: colour/motion are never the only signal) */
 .np-card-flip { transform-origin: 50% 50%; animation: np-flip 700ms ease-out 1 both; }
 @keyframes np-flip {
   from { transform: rotateY(170deg) scale(.92); opacity: .4; }
   to { transform: rotateY(0deg) scale(1); opacity: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .np-card-flip { animation: none; } }
+/* deal-in. Two keyframe sets that differ only in where the card slides from:
+   CardPair alternates them on the projection's handNumber, which restarts the
+   animation on an element React reuses across hands. */
+.np-card-deal { animation: np-deal 420ms ease-out 1 both; }
+.np-card-deal-alt { animation: np-deal-alt 420ms ease-out 1 both; }
+@keyframes np-deal {
+  from { transform: translate(-38%,-170%) rotate(-14deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes np-deal-alt {
+  from { transform: translate(38%,-170%) rotate(14deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+/* winners pulse twice; SeatView also says "wins this hand" */
+.np-seat.winner { border: 2px solid var(--accent); animation: np-win 760ms ease-out 2 both; }
+@keyframes np-win {
+  from { box-shadow: 0 0 0 0 rgba(216,169,74,0); }
+  45% { box-shadow: 0 0 0 7px rgba(216,169,74,.45); }
+  to { box-shadow: 0 0 0 0 rgba(216,169,74,0); }
+}
+/* motion is never required: the OS preference turns all of it off */
+@media (prefers-reduced-motion: reduce) {
+  .np-card-flip, .np-card-deal, .np-card-deal-alt, .np-seat.winner { animation: none; }
+}
 /* board cards get their own slot so they never overlap */
 .np-cardslot-wide { display: inline-block; position: relative; width: 46px; height: 58px; }
 

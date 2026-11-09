@@ -2,6 +2,10 @@
 // it (2–9), board + pots at the centre, the stage label and a one-line
 // "last action" ticker. Cards come from the per-viewer projection only; hidden
 // hands are never asked about (00 §5 / 07 §3).
+//
+// Phase 10 animation stays CSS-only: board cards slide in with a stagger
+// (`animationDelay` from the card's position, no timers), seats of `lastHandResult`
+// winners pulse once and are labelled, and hole cards deal in per hand.
 import { SeatView, SeatRow } from "./SeatView";
 import { CardView } from "./CardView";
 import { formatChips, stageLabel, actionLabel } from "../lib/format";
@@ -42,6 +46,13 @@ export function PokerTable({ room, table, yourSeatIndex }: {
   const totalSeats = room === undefined ? table.seats.length : room.maxSeats ?? table.seats.length;
   const turnSeconds = room === undefined ? undefined : room.turnSeconds;
   const deadline = table.turnDeadline;
+  // Phase 10 winner presentation: `lastHandResult` names the winners (usernames
+  // are unique — 03 §3 rejects a taken name — so matching by name is exact), and
+  // the seat is both pulsed **and** labelled (07 §5).
+  const result = table.lastHandResult === undefined || table.lastHandResult === null
+    ? []
+    : table.lastHandResult.winners;
+  const winningNames: Set<string> = new Set(result.map((w) => w.username));
 
   const rows: SeatRow[] = [];
   const ticker: string[] = [];
@@ -70,6 +81,8 @@ export function PokerTable({ room, table, yourSeatIndex }: {
       turnTotalMs: isTurn && turnSeconds !== undefined && turnSeconds !== null && turnSeconds > 0
         ? turnSeconds * 1000
         : undefined,
+      handNumber: table.handNumber,
+      isWinner: winningNames.has(seat.username),
     });
     if (seat.lastAction !== undefined && seat.lastAction !== null) {
       ticker.push(`${seat.username} ${actionLabel(seat.lastAction.kind, seat.lastAction.amount)}`);
@@ -90,8 +103,12 @@ export function PokerTable({ room, table, yourSeatIndex }: {
       <span className="np-center">
         <span className="np-stage">{stageLabel(table.stage)}</span>
         <span className="np-boardrow">
-          {table.board.map((card) => (
-            <span key={card} className="np-cardslot-wide">
+          {table.board.map((card, index) => (
+            <span
+              key={card}
+              className="np-cardslot-wide np-card-deal"
+              style={{ animationDelay: `${(index % 3) * 110}ms` }}
+            >
               <CardView card={card} />
             </span>
           ))}
@@ -109,9 +126,7 @@ export function PokerTable({ room, table, yourSeatIndex }: {
       {table.handNumber === undefined || table.handNumber === null
         ? null
         : <span className="np-muted">hand #{table.handNumber}</span>}
-      {table.lastHandResult === undefined || table.lastHandResult === null
-        ? null
-        : table.lastHandResult.winners.map((w, i) => (
+      {result.length === 0 ? null : result.map((w, i) => (
             <span key={i} className="np-ticker">
               {w.username} wins {formatChips(w.amount)}
               {w.handRankLabel === undefined || w.handRankLabel === null ? null : ` · ${w.handRankLabel}`}

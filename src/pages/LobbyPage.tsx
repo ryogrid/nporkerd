@@ -7,6 +7,7 @@ import { useMutation, useQuery_experimental } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { BalanceBadge, faucetEligible } from "../components/BalanceBadge";
 import { CreateRoomDialog } from "../components/CreateRoomDialog";
+import { SoundControl } from "../components/SoundControl";
 import { PresenceTicker } from "../lib/auth";
 import { clearSessionToken } from "../lib/session";
 import { errorCopyFor, faucetHint } from "../lib/errorCopy";
@@ -55,6 +56,7 @@ export function LobbyPage({ token, username, balance, navigate }: {
         <h2 className="np-title">{username}</h2>
         <BalanceBadge balance={currentBalance} />
         <PresenceTicker token={token} />
+        <SoundControl />
         <div className="np-actions">
           {faucetEligible(currentBalance) ? (
             <button type="button" onClick={() => void claim()}>Claim the faucet</button>

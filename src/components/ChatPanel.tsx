@@ -11,6 +11,7 @@ import { ChatRow } from "../lib/projection";
 import { MeProfile } from "../lib/auth";
 import { CHAT_MAX_LENGTH, CHAT_WINDOW } from "../../convex/lib/constants";
 import { errorCopyFor } from "../lib/errorCopy";
+import { playCue } from "../lib/sound";
 
 /** Rendered tail of the window: the newest stay visible (07 §2.4 auto-scroll). */
 const RENDERED = 16;
@@ -70,6 +71,9 @@ export function ChatPanel({ roomId, sessionToken, me }: {
     setNotice(undefined);
     try {
       await send({ sessionToken, roomId, body });
+      // Phase 10: the softest cue on the page, and only after the server
+      // accepted the message
+      playCue("action-chat");
     } catch (e) {
       setNotice(errorCopyFor(e));
     }
