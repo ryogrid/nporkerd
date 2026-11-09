@@ -63,7 +63,7 @@ const en: HelpContent = {
         ] },
         { kind: "p", text: "To log in, press “Log in” in the top bar, then drop your key file on the box (or click it to choose the file). That fills in your username as well. You can also paste the npk_… key into the “Private key” box and type your username. Then press “Log in”." },
         { kind: "shot", file: "login.png", caption: "Logging in: drop the key file, or paste the key." },
-        { kind: "note", text: "Your login is kept only in this browser tab. It stays valid for up to 30 days, but closing the tab logs you out. After that (or after “Log out”), just log in again with the same key file." },
+        { kind: "note", text: "You stay logged in on this browser — even after closing the tab or restarting — for up to 30 days, or until you press “Log out”. All tabs share the login. On a shared computer, always press “Log out” when you're done. After the 30 days (or after logging out), just log in again with the same key file." },
       ],
     },
     {
@@ -301,7 +301,7 @@ const ja: HelpContent = {
         ] },
         { kind: "p", text: "ログインするには、上部バーの「ログイン」を押し、鍵ファイルを枠にドロップします（枠をクリックしてファイルを選んでも構いません）。ユーザー名も自動で入ります。npk_… の鍵を「秘密鍵」欄に貼り付けて、ユーザー名を入力しても構いません。最後に「ログイン」を押します。" },
         { kind: "shot", file: "login.png", caption: "ログイン：鍵ファイルをドロップするか、鍵を貼り付けます。" },
-        { kind: "note", text: "ログイン状態はこのブラウザのタブの中だけに保存されます。最長 30 日間有効ですが、タブを閉じるとログアウトします。そのあと（または「ログアウト」したあと）は、同じ鍵ファイルでもう一度ログインしてください。" },
+        { kind: "note", text: "ログイン状態はこのブラウザに保存され、タブを閉じたりブラウザを再起動したりしても、最長 30 日間または「ログアウト」を押すまで続きます。すべてのタブで共有されます。共用のパソコンでは、使い終わったら必ず「ログアウト」してください。30 日が過ぎたとき（またはログアウトしたあと）は、同じ鍵ファイルでもう一度ログインしてください。" },
       ],
     },
     {

@@ -394,3 +394,5 @@ Deviations & decisions (Phase 4):
   top bar, stored in localStorage. Deviation from 07: the UI is no longer English-only.
 - [x] `getTableState` adds `smallBlindSeat` / `bigBlindSeat` (engine `blindSeatsFor`, also
   used by `startHand`), so the client labels the blinds without re-deriving the rule.
+- [x] D-04 decided as B: the session token moved from `sessionStorage` to `localStorage`
+  (an existing per-tab token is migrated once); login and logout sync across tabs.

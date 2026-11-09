@@ -55,7 +55,10 @@ TODO items — none of them requires redesign.
 - **B. `localStorage`** — stays logged in across restarts; risk on shared
   machines; note the token is a bearer credential for ≤ 30 days.
 - **Recommended: A for v1**; B is a one-line change if daily re-login proves
-  annoying. (The *private key* is never stored by the app under either
+  annoying.
+- **Decided (2026-11): B.** Re-login on every new tab was too annoying. The
+  token stays in `localStorage` until it expires or the user logs out, and
+  tabs stay in sync. The Help page tells people on shared computers to log out. (The *private key* is never stored by the app under either
   option — that part is not negotiable.)
 
 ### D-05 Hand evaluator

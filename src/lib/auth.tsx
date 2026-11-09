@@ -1,4 +1,5 @@
-// Session context. The raw token lives in sessionStorage (dies with the tab);
+// Session context. The raw token lives in localStorage (kept until it expires
+// or the user logs out, shared by every tab and kept in sync between them);
 // `auth.me` validates it and supplies the live profile (balance is reactive).
 // `loginWithKeypair` performs the challenge round-trip of design/03 §4.1.
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -6,7 +7,7 @@ import { useMutation, useQuery_experimental } from "convex/react";
 import { FunctionReturnType } from "convex/server";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { clearSessionToken, readSessionToken, writeSessionToken } from "./session";
+import { clearSessionToken, readSessionToken, watchSessionToken, writeSessionToken } from "./session";
 import { signChallenge } from "./keys";
 import { ChallengeResult, LoginResult } from "./projection";
 
@@ -38,6 +39,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     args: token === undefined ? "skip" : { sessionToken: token },
     throwOnError: false,
   });
+
+  // Another tab logged in, switched account or logged out: follow it.
+  useEffect(() => watchSessionToken((next) => {
+    setExpired(false);
+    setToken(next);
+  }), []);
 
   // A rejected token is dropped (outside render, so no state update loops).
   useEffect(() => {

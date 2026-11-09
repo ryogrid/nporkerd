@@ -11,9 +11,9 @@
   All data comes from `useQuery`; all writes from `useMutation`.
 - **No client-side secrets.** The only build-time configuration is
   `VITE_CONVEX_URL` (public). See [03-auth.md](03-auth.md) §7.
-- Session token: held in `sessionStorage` under `nporkerd.session`
-  (survives reload within the tab session, gone when the browser closes —
-  the safer default; persistence trade-off is decision D-04). The private
+- Session token: held in `localStorage` under `nporkerd.session`
+  (kept across tabs and restarts until it expires or the user logs out;
+  decision D-04, option B. It was `sessionStorage` before 2026-11). The private
   key is **never** stored by the app.
 
 ## 2. Pages

@@ -184,7 +184,7 @@ summary:
 | Credential | Held by | Secret? | If leaked |
 | --- | --- | --- | --- |
 | User private key (`npk_…`) | Each user, alone | **Yes — it *is* the account** | Account is compromised; no admin fix exists (by design). User abandons the account. |
-| Session token (`nps_…`) | User's browser (`sessionStorage`) | Yes | Valid until expiry/logout; equivalent to a login for ≤ 30 days. |
+| Session token (`nps_…`) | User's browser (`localStorage`) | Yes | Valid until expiry/logout; equivalent to a login for ≤ 30 days. |
 | `VITE_CONVEX_URL` (SPA config) | Embedded in the public SPA build | **No** — it is just the deployment's public API URL | Nothing; it is printed on every page load. |
 | Convex deploy key | Project owner only (password manager / CI secret) | **Yes — root-equivalent** | Attacker controls backend + data. Revoke in the Convex dashboard immediately and issue a new one. |
 | Convex account login (owner) | Project owner | Yes; enable 2FA | Same as deploy key, plus project transfer risk. |
