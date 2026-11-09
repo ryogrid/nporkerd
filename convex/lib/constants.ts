@@ -43,6 +43,7 @@ export const NEXT_HAND_DELAY_MS = 5_000;
 export const STREET_DEAL_DELAY_MS = 1_200; // all-in runout pacing
 
 // Cleanup policy (design/05 §8, cron hourly).
-export const ROOM_STALE_MS = 30 * 60 * 1000; // no activity -> auto-close
+export const OFFLINE_STOOD_UP_MS = 10 * 60 * 1000; // 05 §8: offline seated player auto-stood up
+export const ROOM_STALE_MS = 6 * 60 * 60 * 1000; // 05 §8: waiting room, no activity -> auto-close
 export const ROOM_CLOSED_DELETE_MS = 7 * 24 * 60 * 60 * 1000; // delete after
 export const EMPTY_LOBBY_KEEP_MS = 10 * 60 * 1000; // lobby shows <10min-only

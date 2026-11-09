@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { startHand, applyAction, legalActions, seatsAfter, HandState } from "./engine";
+import { startHand, applyAction, legalActions, seatsAfter, advanceStreetIfNeeded, HandState } from "./engine";
 
 /** Deterministic 32-bit PRNG for seeded simulations (mulberry32). */
 function mulberry32(seed: number): () => number {
@@ -235,7 +235,7 @@ describe("action sequences", () => {
   expect(chipsOnTable(s3)).toBe(225);
  });
 
- it("blinds all-in preflop auto-runs out the board", () => {
+ it("blinds all-in preflop run out the board one street at a time", () => {
   const input = {
    id: "runout",
    handNumber: 1,
@@ -252,12 +252,25 @@ describe("action sequences", () => {
   const s0 = startHand(input).state;
   // heads-up button 0 (a, SB 60) raises all-in to 60, b (BB) calls all-in.
   const s1 = applyAction(s0, "a", { kind: "allIn" });
-  const s2 = applyAction(s1, "b", { kind: "allIn" });
-  expect(s2.stage).toBe("finished");
-  expect(s2.board.length).toBe(5);
-  expect(chipsOnTable(s2)).toBe(150);
+  let s = applyAction(s1, "b", { kind: "allIn" });
+  // 04 §8: the street that ends with the last all-in is dealt by that same
+  // step (the flop lands with the call), then every later street is one step,
+  // paced by STREET_DEAL_DELAY_MS, and the river step also shows down.
+  expect(s.stage).toBe("flop");
+  expect(s.turnSeat).toBe(-1);
+  const seen: string[] = [];
+  let steps = 0;
+  while (s.stage !== "finished") {
+   s = advanceStreetIfNeeded(s);
+   seen.push(s.stage);
+   steps += 1;
+   expect(steps <= 4).toBe(true);
+  }
+  expect(seen).toEqual(["turn", "finished"]);
+  expect(s.board.length).toBe(5);
+  expect(chipsOnTable(s)).toBe(150);
   // the caller for less gets refunded their uncalled part handled by bands:
-  const shares = s2.result!.shares.reduce((acc, x) => acc + x.chips, 0);
+  const shares = s.result!.shares.reduce((acc, x) => acc + x.chips, 0);
   expect(shares).toBe(150);
  });
 });
@@ -336,7 +349,11 @@ describe("randomized simulations", () => {
    while (s.stage !== "finished") {
     const actor = s.players.find((p) => p.seatIndex === s.turnSeat);
     if (actor === undefined) {
-     break;
+     // runout: the caller drives one street at a time (04 §8)
+     s = advanceStreetIfNeeded(s);
+     guard += 1;
+     expect(guard < 400).toBe(true);
+     continue;
     }
     const options = legalActions(s, actor.userId);
     expect(options.length > 0).toBe(true);

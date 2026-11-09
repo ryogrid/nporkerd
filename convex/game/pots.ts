@@ -117,7 +117,7 @@ export function awardContributions(input: AwardInput): AwardResult {
   const winners = input.winners.filter((w) => band.eligible.includes(w.userId));
   if (winners.length === 0) {
    // no winner covered this band: each contributor gets their slice back
-   // MKRrefund
+   
    for (const entry of Object.entries(band.contributions)) {
     shares.push({ userId: entry[0], chips: entry[1] });
    }

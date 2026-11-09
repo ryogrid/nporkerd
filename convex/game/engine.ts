@@ -286,12 +286,12 @@ export function finishHand(state: HandState): void {
 
 /**
  * Move the game along the state machine (04 §4): after an action, find the
- * next actor; when the street is complete advance the stage (burn + deal),
- * auto-running out the remaining streets when no one can act any more, and
- * finishing the hand when a single contender remains or the river is done.
+ * next actor; when the street is complete deal ONE more street (burn + deal)
+ * and leave `turnSeat = -1` when no one can act, so the caller drives the
+ * runout street-by-street (design 04 §8 wants each street visible for
+ * STREET_DEAL_DELAY_MS before the next one appears).
  */
 export function advanceStreetIfNeeded(state: HandState): HandState {
- const live = activeOf(state);
  const contenders = state.players.filter((p) => p.status !== "folded");
  const next = nextActorSeat(state.players, state.turnSeat, state.currentBet);
  if (next !== -1 && !(contenders.length === 1)) {
@@ -311,15 +311,8 @@ export function advanceStreetIfNeeded(state: HandState): HandState {
   finishHand(state);
   return state;
  }
- const noOneCanAct = live.length === 0;
- if (state.stage === "river" || (noOneCanAct && state.stage !== "finished")) {
-  // run out remaining streets immediately, then showdown (04 §4 auto-deal)
-  while (state.board.length < 5) {
-   const remaining = 5 - state.board.length;
-   const take = state.stage === "preflop" ? Math.min(3, remaining) : 1;
-   dealStreet(state, take);
-   state.stage = state.board.length >= 5 ? "river" : state.board.length >= 4 ? "turn" : "flop";
-  }
+ if (state.stage === "river") {
+  // river betting done (or run out): showdown (04 §4)
   state.stage = "finished";
   state.turnSeat = -1;
   finishHand(state);
@@ -337,9 +330,11 @@ export function advanceStreetIfNeeded(state: HandState): HandState {
  }
  const first = nextActorSeat(state.players, state.buttonSeat, 0);
  state.turnSeat = first;
- if (first === -1) {
-  // nobody to act: immediately keep running out
-  return advanceStreetIfNeeded(state);
+ if (first === -1 && state.stage === "river") {
+  // runout finished on the river card: showdown immediately (04 §4)
+  state.stage = "finished";
+  state.turnSeat = -1;
+  finishHand(state);
  }
  return state;
 }

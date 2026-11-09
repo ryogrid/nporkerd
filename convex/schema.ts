@@ -112,7 +112,7 @@ export default defineSchema({
           v.literal("active"),
           v.literal("folded"),
           v.literal("allIn"),
-          v.literal("out"),
+          v.literal("out"), // reserved by 02; the engine never emits it
         ),
         hasActed: v.boolean(), // engine-internal reducer state
       }),
@@ -138,9 +138,20 @@ export default defineSchema({
           v.literal("call"),
           v.literal("raiseTo"),
           v.literal("allIn"),
+          v.literal("timeout-check"), // 04 §8: auto-timeout labels
+          v.literal("timeout-fold"),
         ),
         amount: v.optional(v.number()),
         at: v.number(),
+      }),
+    ),
+    // Per-player action/timeout tallies for the auto-sit-out rule (04 §9):
+    // a player whose every action of a hand timed out sits out next hand.
+    timeoutStats: v.array(
+      v.object({
+        userId: v.id("users"),
+        timeouts: v.number(),
+        actions: v.number(),
       }),
     ),
     result: v.optional(

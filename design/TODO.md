@@ -81,16 +81,25 @@ Deviations & decisions (Phase 4):
 
 ## Phase 5 — Game flow on Convex (`04 §8–9`, `08 §4`)
 
-- [ ] `game.getTableState`: per-viewer projection exactly per `08 §4`, incl. server-computed `legal` block and `lastHandResult`. (M)
-- [ ] `game.startGame` (host gate, ≥ 2 qualifying seats) + internal `startHandInternal` (deck shuffle via `lib/rng`, hole cards, blinds, first timer). (M)
-- [ ] `game.act`: session + turn checks, engine reduce, persist, timer management; errors `NOT_YOUR_TURN` / `ILLEGAL_ACTION`. (M)
-- [ ] Internal `handleTurnTimeout` with `(handId, turnSeq)` guard; timeout action = check-if-free else fold. (S)
-- [ ] Internal `advanceStreet` for all-in runouts (1.2 s pacing) and internal `startNextHand` (5 s delay, auto-sit-out of full-timeout players, room back to `waiting` when < 2 qualify). (M)
-- [ ] Replace Phase 3 stubs: mid-hand `standUp`/`leaveRoom` now fold the player through the engine first. (S)
-- [ ] `crons.ts` + internal cleanup: expired sessions/challenges hourly; stale waiting rooms (6 h) closed; offline seated players in non-playing rooms stood up (`05 §8`). (S)
+- [x] `game.getTableState`: per-viewer projection exactly per `08 §4`, incl. server-computed `legal` block and `lastHandResult`.
+  - `stage` is `"waiting"` when the room is `waiting` and the current hand is finished; otherwise the hand's stage.
+  - `legal` is computed in the shell (the engine's `legalActions` enumerates moves, it does not expose amounts).
+- [x] `game.startGame` (host gate, ≥ 2 qualifying seats) + internal `startHandInternal` (deck shuffle via `lib/rng`, hole cards, blinds, first timer).
+- [x] `game.act`: session + turn checks, engine reduce, persist, timer management; errors `NOT_YOUR_TURN` / `ILLEGAL_ACTION`.
+- [x] Internal `handleTurnTimeout` with `(handId, turnSeq)` guard; timeout action = check-if-free else fold (`lastAction.kind` = `timeout-check` / `timeout-fold`).
+- [x] Internal `advanceStreet` (1.2 s per street) and `startNextHand` (5 s, auto-sit-out, room → `waiting` when < 2 qualify).
+  - Engine `advanceStreetIfNeeded` now deals **one** street per call and leaves `turnSeat = -1`; the shell re-schedules until showdown. The street that ends with the final all-in is dealt by that same step, so pacing starts with the next street.
+- [x] Replace Phase 3 stubs: mid-hand `standUp`/`leaveRoom` fold through the engine first (`foldMidHand` in `game.ts`; `endGame`/`closeRoom` still refuse live hands).
+- [x] `crons.ts` + internal cleanup: hourly; expired sessions/challenges deleted; `waiting` rooms idle 6 h closed (members cashed out); offline > 10 min `seated` players stood up in non-playing rooms.
+  - `cleanupExpired` is an internal **action** (08 §4) so it delegates to internal query/mutations (`sweepForCleanup`, `purgeEphemeral`, `closeStaleRoom`, `standUpIdleSeats`).
 - [ ] Concurrency test: fire two `act` mutations for the same turn concurrently; exactly one applies. (S)
 - [ ] Security review checklist (release blocker): no public function returns a `hands` document; `getTableState` output for a non-showdown opponent contains no `holeCards`; the string `deck` appears in no return value — add an automated test asserting the projection shape for a mid-hand opponent view. (M)
-- Acceptance: a scripted two-player hand runs preflop→showdown on dev, driven only through public mutations, with timers firing when actions are withheld.
+- [ ] Acceptance: a scripted two-player hand runs preflop→showdown driven only through public mutations, with timers firing when actions are withheld.
+
+### Deviations (Phase 5)
+- `hands` doc gains `timeoutStats` (the auto-sit-out tally of 04 §9 has no field in 02 §6); `ante` stays 0 because `rooms` has no ante setting (02 §4); `players[].stack` is not stored, derived as `stackStart − betTotal`.
+- `lastAction` follows 02 §6 `{ seatIndex, kind, amount?, at }` (no `userId`); the engine's internal `lastAction.userId` is mapped through the participants.
+- No room/hand deletion policy implemented (D-07 is an open decision in 10).
 
 ## Phase 6 — Chat (`06`, `08 §5`)
 

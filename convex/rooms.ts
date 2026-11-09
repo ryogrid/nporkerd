@@ -20,6 +20,7 @@ import {
 } from "./lib/constants";
 import { fail, INVALID_ROOM_SETTINGS, JOIN_DENIED, NOT_A_MEMBER, NOT_HOST, ROOM_CLOSED, SEAT_TAKEN, ALREADY_SEATED, INSUFFICIENT_BALANCE, GAME_IN_PROGRESS, BETWEEN_HANDS_ONLY } from "./lib/errors";
 import { requireSession } from "./lib/session";
+import { foldMidHand } from "./game";
 import { sha256Hex } from "./lib/hash";
 
 const LOBBY_LIMIT = 50; // 08 §3 listPublicRooms cap
@@ -453,11 +454,15 @@ export const standUp = mutation({
     if (mine === null) {
       fail(JOIN_DENIED);
     }
-    // Mid-hand rule: Phase 5 folds through the engine first; until then,
-    // leaveRoom/standUp reject with GAME_IN_PROGRESS (Phase 3 note, 05 §4).
-    await rejectIfHandLive(ctx, room);
+    // 05 §4 mid-hand rule: fold through the engine first (committed chips stay
+    // in the pot), then the seat's uncommitted stack is cashed back out.
+    await foldMidHand(ctx, args.roomId, user._id);
+    const current = await membership(ctx, args.roomId, user._id);
+    if (current === null) {
+      fail(JOIN_DENIED);
+    }
     const now = Date.now();
-    const balance = user.balance + mine.stack;
+    const balance = user.balance + current.stack;
     // Atomic balance↔stack move (single transaction — 05 §4).
     await ctx.db.patch("users", user._id, { balance });
     await ctx.db.patch("seats", mine._id, {
@@ -486,11 +491,15 @@ export const leaveRoom = mutation({
     if (mine === null) {
       fail(NOT_A_MEMBER);
     }
-    // Mid-hand fold is Phase 5 (engine); until then reject (same note).
-    await rejectIfHandLive(ctx, room);
+    // 05 §4: leaving is always allowed, mid-hand included (fold first).
+    await foldMidHand(ctx, args.roomId, user._id);
+    const current = await membership(ctx, args.roomId, user._id);
+    if (current === null) {
+      fail(NOT_A_MEMBER);
+    }
     const now = Date.now();
-    if (mine.seatIndex >= 0 && mine.state !== "left") {
-      const balance = user.balance + mine.stack;
+    if (current.seatIndex >= 0 && current.state !== "left") {
+      const balance = user.balance + current.stack;
       await ctx.db.patch("users", user._id, { balance });
     }
     await ctx.db.delete("seats", mine._id);

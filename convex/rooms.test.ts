@@ -81,6 +81,7 @@ describe("rooms", () => {
         dealerSeat: 0,
         currentBet: 0,
         minRaise: 0,
+        timeoutStats: [],
         turnSeq: 0,
         startedAt: Date.now(),
       });
@@ -305,20 +306,12 @@ describe("rooms", () => {
     );
   });
 
-  it("mid-hand guards via planted hands docs (GAME_IN_PROGRESS, 05 §5)", async () => {
+  it("mid-hand boundaries: host ops refused, stand-up/leave folded-first (05 §4–§5)", async () => {
     const host = await seedUser("GH", FAUCET_AMOUNT * 10, "tok_gh");
     const room = await t.mutation(api.rooms.createRoom, { sessionToken: "tok_gh", name: "Guard" });
     await t.mutation(api.rooms.sitDown, { sessionToken: "tok_gh", roomId: room.roomId, seatIndex: 0 });
     const handId = await seedHand(room.roomId, "turn");
-    // every mutating table op is refused while the hand is live
-    await expectError(
-      async () => await t.mutation(api.rooms.standUp, { sessionToken: "tok_gh", roomId: room.roomId }),
-      errorCodes.GAME_IN_PROGRESS,
-    );
-    await expectError(
-      async () => await t.mutation(api.rooms.leaveRoom, { sessionToken: "tok_gh", roomId: room.roomId }),
-      errorCodes.GAME_IN_PROGRESS,
-    );
+    // host powers stay hand-boundary-only (05 §5)
     await expectError(
       async () => await t.mutation(api.rooms.endGame, { sessionToken: "tok_gh", roomId: room.roomId }),
       errorCodes.GAME_IN_PROGRESS,
@@ -332,6 +325,12 @@ describe("rooms", () => {
       async () => await t.mutation(api.rooms.topUp, { sessionToken: "tok_gh", roomId: room.roomId }),
       errorCodes.BETWEEN_HANDS_ONLY,
     );
+    // 05 §4: standing up mid-hand is legal — the player is folded first through
+    // the engine (the fold itself is exercised on a real hand in game.test.ts),
+    // so the whole stack cashes back out here.
+    const stood = await t.mutation(api.rooms.standUp, { sessionToken: "tok_gh", roomId: room.roomId });
+    expect(stood.balance).toBe(FAUCET_AMOUNT * 10);
+    await t.mutation(api.rooms.sitDown, { sessionToken: "tok_gh", roomId: room.roomId, seatIndex: 0 });
     expect(await userBalance(host)).toBe(FAUCET_AMOUNT * 10 - 1000);
     // finish the hand -> all boundary ops become legal
     await t.run(async (ctx) => await ctx.db.patch("hands", handId, { stage: "finished", finishedAt: Date.now() }));
@@ -345,6 +344,11 @@ describe("rooms", () => {
     expect(topped.balance).toBe(FAUCET_AMOUNT * 10 - 1000 - 700);
     const ended = await t.mutation(api.rooms.endGame, { sessionToken: "tok_gh", roomId: room.roomId });
     expect(ended.ok).toBe(true);
+    // 05 §4: leaving is always allowed, even mid-hand; last member out closes.
+    await t.mutation(api.rooms.leaveRoom, { sessionToken: "tok_gh", roomId: room.roomId });
+    expect(await userBalance(host)).toBe(FAUCET_AMOUNT * 10 - 700);
+    const closed = await t.run(async (ctx) => await ctx.db.get("rooms", room.roomId));
+    expect(closed?.status).toBe("closed");
   });
 
   it("host migration and auto-close on last member (05 §5)", async () => {
