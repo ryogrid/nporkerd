@@ -2,13 +2,13 @@
 // the faucet rule allows, logout), the reactive public-room list (08 §3), and
 // the create-room dialog. The list is a plain reactive query: no polling and
 // no refresh timers here (07 §3).
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery_experimental } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { BalanceBadge, faucetEligible } from "../components/BalanceBadge";
 import { CreateRoomDialog } from "../components/CreateRoomDialog";
 import { PresenceTicker } from "../lib/auth";
-import { clearSessionToken, writeSessionToken } from "../lib/session";
+import { clearSessionToken } from "../lib/session";
 import { errorCopyFor, faucetHint } from "../lib/errorCopy";
 import { formatChips } from "../lib/format";
 import { LobbyRow } from "../lib/projection";

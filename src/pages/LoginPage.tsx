@@ -10,7 +10,6 @@ import { describeSecretKey, parseKeyFile } from "../lib/keys";
 import { loginWithKeypair } from "../lib/auth";
 import { writeSessionToken } from "../lib/session";
 import { LobbyPage } from "./LobbyPage";
-import { errorCopyFor } from "../lib/errorCopy";
 
 /** 03 §4.3: one sentence for every failure mode. */
 const GENERIC_FAILURE = "Login failed: unknown username or wrong key.";

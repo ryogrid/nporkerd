@@ -14,10 +14,9 @@ import { PokerTable } from "../components/PokerTable";
 import { errorCopyFor } from "../lib/errorCopy";
 import { formatChips, countdownLabel, secondsLeft } from "../lib/format";
 import { RoomProfile, TableState } from "../lib/projection";
-import { MeProfile } from "../lib/auth";
+import { MeProfile, PresenceTicker } from "../lib/auth";
 import { Id } from "../../convex/_generated/dataModel";
-import { NEXT_HAND_DELAY_MS, PRESENCE_ONLINE_MS } from "../../convex/lib/constants";
-import { PresenceTicker } from "../lib/auth";
+import { NEXT_HAND_DELAY_MS } from "../../convex/lib/constants";
 
 export function RoomPage({ roomId, token, me, navigate }: {
   roomId: Id<"rooms">;
