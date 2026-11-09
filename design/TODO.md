@@ -12,12 +12,12 @@ L ≈ several days.
 
 ## Phase 0 — Project setup
 
-- [ ] Initialise the Vite + React + TypeScript app (`npm create vite@latest`, react-ts template); add `convex`, `@noble/ed25519`, and dev deps (`vitest`). (S)
-- [ ] Owner steps from `09 §2`: Convex account, `npx convex dev` linked, `.env.local` created and gitignored. (S)
-- [ ] Add `convex.json`-era defaults via `npx convex dev`; commit the generated `convex/_generated/` skeleton. (S)
-- [ ] npm scripts: `dev` (Vite), `dev:convex` (`convex dev`), `build`, `test` (Vitest), `deploy` (see Phase 9). (S)
-- [ ] CI (optional): GitHub Actions running `npm test` + `tsc --noEmit` on push. No deploy from CI in v1. (S)
-- Acceptance: `npm run dev` + `npx convex dev` run side by side; the default Convex demo query renders in the SPA.
+- [x] Initialise the Vite + React + TypeScript app (`npm create vite@latest`, react-ts template); add `convex`, `@noble/ed25519`, and dev deps (`vitest`). (S) — scaffolded by hand (same layout as the vite react-ts template); pinned world versions: convex 1.49.0, vite 8.3.6, vitest 5.1.0, react 19.3.1, typescript 5.9.3 (vitest peer caps TS <6), @vitejs/plugin-react 6.2.1, @noble/ed25519 3.2.0 + @noble/hashes 2.4.0, convex-test 0.0.67.
+- [x] Owner steps from `09 §2`: Convex account, `npx convex dev` linked, `.env.local` created and gitignored. (S) — account already linked by owner (`CONVEX_DEPLOYMENT` in gitignored `.env.local`); `convex dev` deliberately NOT run here: no-deploy constraint; validated equivalently with `tsc -p convex` + `npm test`.
+- [x] Add `convex.json`-era defaults via `npx convex dev`; commit the generated `convex/_generated/` skeleton. (S) — skeleton committed (from initial repo state); N/A note: modern Convex 1.49 uses `convex.config.ts`, and `convex/convex.config.ts` already registers `@convex-dev/static-hosting` at `/` with app httpPrefix `/api`, so no `convex/http.ts` is needed (deviation from `08 §6`, recorded).
+- [x] npm scripts: `dev` (Vite), `dev:convex` (`convex dev`), `build`, `test` (Vitest), `deploy` (see Phase 9). (S) — plus `typecheck`; `dev:convex` kept for owner only, never run by the agent.
+- [ ] CI (optional): GitHub Actions running `npm test` + `tsc --noEmit` on push. No deploy from CI in v1. (S) — skipped (optional; revisit in Phase 8).
+- Acceptance: `npm run dev` + `npx convex dev` run side by side; the default Convex demo query renders in the SPA. → Adapted: no-deploy constraint; verified instead with `npm run typecheck` (frontend + convex projects), `vite build` ✓, vitest runner ✓.
 
 ## Phase 1 — Schema and shared backend helpers
 
