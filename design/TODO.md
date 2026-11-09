@@ -21,13 +21,13 @@ L ≈ several days.
 
 ## Phase 1 — Schema and shared backend helpers
 
-- [ ] `convex/schema.ts`: all tables/fields/indexes from `02` (users, sessions, loginChallenges, rooms, seats, hands, chatMessages). Note `loginChallenges.userId` is `optional` per `03 §4.3`. (M)
-- [ ] `convex/lib/constants.ts` with every constant from `02 §8`. (S)
-- [ ] `convex/lib/hash.ts`: `sha256Hex` via WebCrypto. Unit test with known vectors. (S)
-- [ ] `convex/lib/rng.ts`: `randomInt(maxExclusive)` using `crypto.getRandomValues` with rejection sampling; `shuffleInPlace`. Statistical smoke test (uniformity over 6 buckets). (S)
-- [ ] `convex/lib/session.ts`: `requireSession(ctx, token)` per `03 §5`; error code constants in `convex/lib/errors.ts` covering the full list in `08 §9`. (S)
-- [ ] Wire `@noble/ed25519` sync SHA-512 (`ed.etc.sha512Sync`) in one shared module used by both client and server code. (S)
-- Acceptance: schema deploys to dev (`npx convex dev` shows no validation errors); helper tests pass.
+- [x] `convex/schema.ts`: all tables/fields/indexes from `02` (users, sessions, loginChallenges, rooms, seats, hands, chatMessages). Note `loginChallenges.userId` is `optional` per `03 §4.3`. (M) — done; world validator surface is `v.id("table")` / `v.optional` / `v.union(v.literal(...))` (no `v.Identity`); `convex/_generated/dataModel.d.ts` hand-written in the demo project's schema-aware codegen format so `convex dev` regenerates identically.
+- [x] `convex/lib/constants.ts` with every constant from `02 §8`. (S) — done (+ a few clearly-marked extras used by helpers).
+- [x] `convex/lib/hash.ts`: `sha256Hex` via WebCrypto. Unit test with known vectors. (S) — done; SHA-256 vectors for "", "abc", pangram verified.
+- [x] `convex/lib/rng.ts`: `randomInt(maxExclusive)` using `crypto.getRandomValues` with rejection sampling; `shuffleInPlace`. Statistical smoke test (uniformity over 6 buckets). (S) — done; `shuffleInPlace(items, random?)` takes an injectable source; tests cover arg validation, range, totality of rejection sampling, permutation, known-source permutations.
+- [x] `convex/lib/session.ts`: `requireSession(ctx, token)` per `03 §5`; error code constants in `convex/lib/errors.ts` covering the full list in `08 §9`. (S) — done; all 25 codes in `errors.ts` with `fail(code, data?)` throwing `ConvexError({code,data})`; session test via convex-test (`convex/session.test.ts`) asserts UNAUTHENTICATED payload code, expiry rejection, and that no stored session doc contains the raw token.
+- [x] Wire `@noble/ed25519` sync SHA-512 (`ed.etc.sha512Sync`) in one shared module used by both client and server code. (S) — done, world-API deviation: `@noble/ed25519@3.2.0` wires via `ed.hashes.sha512 = sha512` (from `@noble/hashes/sha2.js`), not `ed.etc.sha512Sync`; `convex/lib/ed5519.ts` performs the wiring at import time and exposes key/sign/verify helpers; round-trip + tamper tests green.
+- Acceptance: schema deploys to dev (`npx convex dev` shows no validation errors); helper tests pass. → Adapted (no-deploy constraint): `npm run typecheck` green for both TS projects (typechecks `convex/` against the schema-aware data model) and `npm test` 31/31 passing across 5 test files.
 
 ## Phase 2 — Authentication (`03`, `08 §1–2`)
 
