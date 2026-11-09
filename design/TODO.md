@@ -341,6 +341,10 @@ Deviations & decisions (Phase 4):
   exact. Still only cosmetic — the projection never gates on it.
 - No audio assets, no autoplay: cues exist only as small tone tables, which also keeps
   the built bundle at ~356 kB instead of adding files to the static-hosting upload.
+- Validation for this client-only feature is `npm run typecheck` + `npm run build`
+  (117 modules, 355 kB): the vitest include glob is `convex/**`, so there is no runtime
+  harness over `src/`, and the audible/visible half can only be confirmed in the
+  browser walk-through of 09 §5.
 - [ ] Moderation basics: host kick (remove a member from the room).
 - [ ] Move passphrase hashing to iterated SHA-256 (D-09 option B) if probing is observed.
 - [ ] Data retention job (D-07 option B) if table growth matters.
