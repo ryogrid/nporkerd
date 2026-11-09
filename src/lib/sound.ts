@@ -113,6 +113,10 @@ export function playCue(cue: string): void {
       audio = undefined;
       return;
     }
+    // a backgrounded tab suspends the graph; resume it so the cue still plays
+    if (ctx.state === "suspended") {
+      void ctx.resume();
+    }
     for (const tone of tones) {
       playTone(ctx, tone);
     }
