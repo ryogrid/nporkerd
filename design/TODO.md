@@ -103,10 +103,34 @@ Deviations & decisions (Phase 4):
 
 ## Phase 6 — Chat (`06`, `08 §5`)
 
-- [ ] `chat.sendMessage` (member gate, trim, 500-char cap, 800 ms rate limit). (S)
-- [ ] `chat.listMessages` (latest 100 ascending, username joined at query time). (S)
-- [ ] Tests: non-member cannot read or post; rate limit triggers; 501-char message rejected. (S)
-- Acceptance: messages between two dev users appear reactively in both clients.
+- [x] `chat.sendMessage` (member gate, trim, 500-char cap, 800 ms rate limit).
+  - `INVALID_MESSAGE` carries `{ max, length }`; `RATE_LIMITED` carries `retryInMs`.
+  - the window is the newest message of that user in that room (`by_room_createdAt`,
+    `order("desc")` + `userId` filter), compared with the server's `Date.now()`.
+  - posting bumps `rooms.lastActivityAt`, so an active table never looks stale (02 §4).
+- [x] `chat.listMessages` (latest `CHAT_WINDOW` = 100, oldest-to-newest).
+  - `{ id, userId, username, body, createdAt }`; the username is joined from `users`
+    in the query, so renames show through and bodies cannot impersonate anyone (06 §3).
+  - closed rooms reject with `ROOM_CLOSED` (06 §2 "queries reject closed rooms"); the
+    documents stay put — retention/deletion remains the open decision D-07 (10).
+- [x] Tests: 7 green convextest cases — non-member blocked on read **and** post
+  (member-but-unseated allowed both), `INVALID_MESSAGE` for 501 chars and for a
+  whitespace-only body, exact 500-char body stored trimmed, `RATE_LIMITED` proven
+  deterministically by pinning the stored `createdAt` (per-user window: the other
+  member still posts), re-post allowed once the message is aged, `lastActivityAt`
+  bumped, 105 inserted messages windowed to the newest 100 ascending, username
+  joined at query time after a rename, closed room unreachable while messages
+  persist. Suite is 101 green.
+- [ ] Acceptance: messages between two dev users appear reactively in both clients.
+  (Client-side half lands in Phase 7 — `listMessages` is a plain Convex query, so the
+  SPA subscribes to it and new documents arrive without polling.)
+
+### Deviations (Phase 6)
+- Membership ⇒ `seats` document for (room, user) (05 §3), so the chat gate is the
+  same lookup as the room gate; there is no separate membership table.
+- The rate limit is a soft anti-flood control exactly as 06 §2 says: two
+  simultaneously-issued posts by the same user are not arbitrated against each
+  other (each transaction re-reads the same newest message).
 
 ## Phase 7 — Frontend pages and components (`07`)
 

@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as users from "../users.js";
 import type * as rooms from "../rooms.js";
 import type * as game from "../game.js";
+import type * as chat from "../chat.js";
 
 import type {
   ApiFromModules,
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   users: typeof users;
   rooms: typeof rooms;
   game: typeof game;
+  chat: typeof chat;
 }>;
 
 /**
