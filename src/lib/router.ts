@@ -1,4 +1,4 @@
-// Tiny History-API router: real paths (/room/<id>) that survive reloads (the
+// Tiny History-API router: real paths (/room/<id>, /help) that survive reloads (the
 // static host falls back to index.html) and work with the back button.
 import { useCallback, useEffect, useState } from "react";
 
@@ -7,6 +7,7 @@ export type Route =
   | { page: "register" }
   | { page: "login" }
   | { page: "lobby" }
+  | { page: "help" }
   | { page: "room"; roomId: string };
 
 export type Navigate = (path: string, options?: { replace?: boolean }) => void;
@@ -25,6 +26,7 @@ export function parseRoute(path: string): Route {
   if (head === "register") return { page: "register" };
   if (head === "login") return { page: "login" };
   if (head === "lobby") return { page: "lobby" };
+  if (head === "help") return { page: "help" };
   return { page: "home" };
 }
 

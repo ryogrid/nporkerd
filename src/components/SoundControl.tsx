@@ -1,8 +1,11 @@
 // Mute toggle + volume slider. Preferences live in localStorage (lib/sound).
 import { useState } from "react";
 import { getVolume, playCue, setSoundOn, setVolume, soundOn } from "../lib/sound";
+import { commonMessages } from "../i18n/common";
+import { useT } from "../i18n/core";
 
 export function SoundControl() {
+  const t = useT(commonMessages);
   const [on, setOn] = useState(() => soundOn());
   const [volume, setVol] = useState(() => getVolume());
 
@@ -20,8 +23,8 @@ export function SoundControl() {
         className="icon-btn"
         onClick={toggle}
         aria-pressed={on}
-        title={on ? "Mute sound" : "Turn sound on"}
-        aria-label={on ? "Mute sound" : "Turn sound on"}
+        title={on ? t("muteSound") : t("soundOn")}
+        aria-label={on ? t("muteSound") : t("soundOn")}
       >
         {on ? "🔊" : "🔇"}
       </button>
@@ -32,7 +35,7 @@ export function SoundControl() {
           max={1}
           step={0.05}
           value={volume}
-          aria-label="Volume"
+          aria-label={t("volume")}
           onChange={(e) => {
             const v = Number(e.target.value);
             setVol(v);

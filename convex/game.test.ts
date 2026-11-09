@@ -165,6 +165,10 @@ describe("game", () => {
     const first = await handDoc(table.roomId);
     expect(first!.stage).toBe("preflop");
     expect(first!.dealerSeat).toBe(0);
+    // the projection labels the blinds: heads-up the button posts the SB
+    const view1 = await t.query(api.game.getTableState, { sessionToken: "tok_a_next", roomId: table.roomId });
+    expect(view1.smallBlindSeat).toBe(0);
+    expect(view1.bigBlindSeat).toBe(1);
     // SB (seat 0 = button) calls, BB checks; then check every street down
     await t.mutation(api.game.act, { sessionToken: "tok_a_next", roomId: table.roomId, kind: "call" });
     await t.mutation(api.game.act, { sessionToken: "tok_b_next", roomId: table.roomId, kind: "check" });
@@ -183,6 +187,9 @@ describe("game", () => {
     expect(second!.stage).not.toBe("finished");
     // button alternates heads-up (04 §3 rotation)
     expect(second!.dealerSeat).toBe(1);
+    const view2 = await t.query(api.game.getTableState, { sessionToken: "tok_b_next", roomId: table.roomId });
+    expect(view2.smallBlindSeat).toBe(1);
+    expect(view2.bigBlindSeat).toBe(0);
     // stacks credited before the new blinds were posted
     // chips are conserved: seat stacks + what the new hand has committed
     const stacks = await seatStacks(table.roomId);

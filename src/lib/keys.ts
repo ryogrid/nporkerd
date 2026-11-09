@@ -7,6 +7,8 @@
 // wiring below happens exactly once on import (same as convex/lib/ed5519.ts).
 import * as ed from "@noble/ed25519";
 import { sha512, sha256 } from "@noble/hashes/sha2.js";
+import { authMessages } from "../i18n/auth";
+import { tr } from "../i18n/core";
 
 ed.hashes.sha512 = sha512; // enables sync getPublicKey/sign/verify (03 §1)
 
@@ -107,18 +109,24 @@ export function describeSecretKey(secretKey: string): { publicKey: string; finge
   return { publicKey, fingerprint: fingerprintOfPublicKey(publicKey) };
 }
 
-/** Key-file body: username, key, fingerprint, loss warning (03 §3 step 5). */
+/**
+ * Key-file body: username, key, fingerprint, loss warning (03 §3 step 5), with
+ * the prose in the current UI language. The `username:` / `key:` /
+ * `fingerprint:` lines stay in English: the login page reads them back.
+ */
 export function buildKeyFile(username: string, secretKey: string, fingerprint: string): string {
   return [
-    "nporkerd account key",
+    tr(authMessages, "fileHeader"),
     `username: ${username}`,
     `key: ${secretKey}`,
     `fingerprint: ${fingerprint}`,
     "",
-    "This key is your password. It is shown only at registration; if you lose",
-    "it this account can never be accessed again and nobody can restore it.",
-    "Keep this file somewhere private (your password manager is fine). Anyone",
-    "who holds it can log in as you, so never share it.",
+    tr(authMessages, "fileWarn1"),
+    tr(authMessages, "fileWarn2"),
+    tr(authMessages, "fileWarn3"),
+    tr(authMessages, "fileWarn4"),
+    "",
+    tr(authMessages, "fileWarn5"),
     "",
   ].join("\n");
 }

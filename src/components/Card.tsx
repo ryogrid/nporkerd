@@ -2,6 +2,10 @@
 // card: the server never sends a hidden card, so "missing" means "not mine to see".
 import { CSSProperties } from "react";
 import { isRedSuit, rankText, suitGlyph } from "../lib/format";
+import { useT } from "../i18n/core";
+import { roomMessages } from "../i18n/room";
+
+const SUIT_KEYS = ["spades", "hearts", "diamonds", "clubs"] as const;
 
 export type CardAnim = "deal" | "board" | "flip" | undefined;
 
@@ -12,6 +16,7 @@ export function Card({ card, anim, delayMs, highlight, className }: {
   highlight?: boolean;
   className?: string;
 }) {
+  const t = useT(roomMessages);
   const style: CSSProperties | undefined = delayMs === undefined ? undefined : { animationDelay: `${delayMs}ms` };
   const classes = ["card"];
   if (anim !== undefined) classes.push(`anim-${anim}`);
@@ -20,21 +25,17 @@ export function Card({ card, anim, delayMs, highlight, className }: {
 
   if (card === undefined) {
     classes.push("back");
-    return <div className={classes.join(" ")} style={style} role="img" aria-label="face-down card" />;
+    return <div className={classes.join(" ")} style={style} role="img" aria-label={t("faceDown")} />;
   }
   if (isRedSuit(card)) classes.push("red");
   const rank = rankText(card);
   const suit = suitGlyph(card);
   const isFace = rank === "J" || rank === "Q" || rank === "K";
   return (
-    <div className={classes.join(" ")} style={style} role="img" aria-label={`${rank} of ${suitName(card)}`}>
+    <div className={classes.join(" ")} style={style} role="img" aria-label={t("cardName", { rank, suit: t(SUIT_KEYS[Math.floor(card / 13)] ?? "spades") })}>
       <div className="card-corner"><span>{rank}</span><span className="s">{suit}</span></div>
       <div className={`card-pip${isFace ? " card-face-letter" : ""}`}>{isFace ? rank : suit}</div>
       <div className="card-corner br"><span>{rank}</span><span className="s">{suit}</span></div>
     </div>
   );
-}
-
-function suitName(card: number): string {
-  return ["spades", "hearts", "diamonds", "clubs"][Math.floor(card / 13)] ?? "";
 }

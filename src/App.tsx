@@ -1,4 +1,5 @@
-// App shell: top bar, routing, and the session gate. Lobby and room need a
+// App shell: top bar (language switch, Help link that opens a new tab, sound,
+// account), footer, routing, and the session gate. Lobby and room need a
 // validated session; visitors who open a table link are sent back to it after
 // logging in.
 import { useEffect } from "react";
@@ -10,6 +11,11 @@ import { LoginPage } from "./pages/LoginPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { RoomPage } from "./pages/RoomPage";
 import { SoundControl } from "./components/SoundControl";
+import { LanguageSwitch } from "./components/LanguageSwitch";
+import { SiteFooter } from "./components/SiteFooter";
+import { HelpPage } from "./pages/HelpPage";
+import { commonMessages } from "./i18n/common";
+import { useT } from "./i18n/core";
 import { Chip } from "./components/Chips";
 import { formatChips } from "./lib/format";
 import { unlockAudio } from "./lib/sound";
@@ -38,6 +44,7 @@ export function App() {
   const session = useSession();
   const [path, navigate] = usePath();
   const route = parseRoute(path);
+  const t = useT(commonMessages);
   const signedIn = session.status === "signed-in" && session.me !== undefined && session.token !== undefined;
 
   // browsers only allow audio after a gesture: unlock on the first one
@@ -70,11 +77,14 @@ export function App() {
   }, [signedIn]);
 
   useEffect(() => {
-    document.title = route.page === "room" ? "Table · nporkerd" : "nporkerd — Texas Hold'em";
-  }, [route.page]);
+    document.title = route.page === "room" ? t("titleTable") : route.page === "help" ? t("titleHelp") : t("titleDefault");
+  }, [route.page, t]);
 
   let content;
-  if (session.status === "pending") {
+  if (route.page === "help") {
+    // public: readable without an account, and while the session is loading
+    content = <HelpPage />;
+  } else if (session.status === "pending") {
     content = <div className="center-screen"><div className="spinner" /></div>;
   } else if (route.page === "register" && !signedIn) {
     content = <RegisterPage navigate={navigate} afterAuth={afterAuth} />;
@@ -96,30 +106,44 @@ export function App() {
           <span className="full">npork<em>erd</em></span>
         </button>
         <span className="topbar-spacer" />
+        <LanguageSwitch />
+        <a className="help-link" href="/help" target="_blank" rel="noopener noreferrer" title={t("helpTitle")}>
+          <span className="help-q" aria-hidden="true">?</span>
+          <span className="help-text">{t("help")}</span>
+          <span className="help-ext" aria-hidden="true">↗</span>
+        </a>
         <SoundControl />
         {signedIn && session.me !== undefined ? (
           <>
-            <span className="balance-pill nums" title="Your bankroll">
+            <span className="balance-pill nums" title={t("bankrollTitle")}>
               <Chip color="c-gold" />
               {formatChips(session.me.balance)}
             </span>
             <span className="user-pill"><strong>{session.me.username}</strong></span>
             <button
               type="button"
-              className="btn btn-sm btn-ghost"
+              className="btn btn-sm btn-ghost logout-btn"
+              aria-label={t("logOut")}
+              title={t("logOut")}
               onClick={() => {
                 void session.signOut();
                 navigate("/", { replace: true });
               }}
             >
-              Log out
+              <span className="logout-text">{t("logOut")}</span>
+              <svg className="logout-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
             </button>
           </>
-        ) : route.page !== "login" ? (
-          <button type="button" className="btn btn-sm" onClick={() => navigate("/login")}>Log in</button>
+        ) : route.page !== "login" && route.page !== "help" ? (
+          <button type="button" className="btn btn-sm" onClick={() => navigate("/login")}>{t("logIn")}</button>
         ) : null}
       </header>
       <main className="main">{content}</main>
+      <SiteFooter />
     </div>
   );
 }

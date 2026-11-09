@@ -49,6 +49,7 @@ import {
   applyAction,
   advanceStreetIfNeeded,
   legalActions,
+  blindSeatsFor,
   startHand,
 } from "./game/engine";
 import { buildBands } from "./game/pots";
@@ -571,6 +572,8 @@ export const getTableState = query({
     board: v.array(v.number()),
     pots: v.array(v.object({ amount: v.number() })),
     dealerSeat: v.optional(v.number()),
+    smallBlindSeat: v.optional(v.number()),
+    bigBlindSeat: v.optional(v.number()),
     currentTurnSeat: v.optional(v.number()),
     turnDeadline: v.optional(v.number()),
     // 07 §2.4 needs the between-hands countdown "from the projection": set when
@@ -787,6 +790,13 @@ export const getTableState = query({
       pots: state === null ? [] : displayPots(state),
       ...(state === null ? {} : { totalPot: state.players.reduce((acc, p2) => acc + p2.betTotal, 0) }),
       ...(handDoc === null ? {} : { dealerSeat: handDoc.dealerSeat }),
+      // seats that posted the blinds this hand (stable even if someone leaves)
+      ...(handDoc === null || handDoc.players.length < 2
+        ? {}
+        : (() => {
+          const b = blindSeatsFor(handDoc.dealerSeat, handDoc.players.map((p2) => p2.seatIndex).sort((a, b2) => a - b2));
+          return { smallBlindSeat: b.sbSeat, bigBlindSeat: b.bbSeat };
+        })()),
       ...(handLive && currentTurnSeat >= 0 ? { currentTurnSeat } : {}),
       ...(handLive && handDoc.turnDeadline !== undefined && handDoc.turnDeadline !== null
         ? { turnDeadline: handDoc.turnDeadline }

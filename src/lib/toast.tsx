@@ -1,6 +1,8 @@
 // Transient notifications for failed (and a few successful) actions, so errors
 // never hide in a paragraph far from the button that caused them.
 import { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { toastMessages } from "../i18n/auth";
+import { useT } from "../i18n/core";
 
 export type ToastKind = "error" | "info" | "success";
 type Toast = { id: number; kind: ToastKind; text: string };
@@ -14,6 +16,7 @@ const TOAST_MS = 4_500;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
+  const t = useT(toastMessages);
 
   const dismiss = useCallback((id: number) => {
     setToasts((all) => all.filter((t) => t.id !== id));
@@ -35,9 +38,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <button key={t.id} type="button" className={`toast toast-${t.kind}`} onClick={() => dismiss(t.id)}>
-            {t.text}
+        {toasts.map((toast) => (
+          <button key={toast.id} type="button" className={`toast toast-${toast.kind}`} title={t("dismiss")} onClick={() => dismiss(toast.id)}>
+            {toast.text}
           </button>
         ))}
       </div>

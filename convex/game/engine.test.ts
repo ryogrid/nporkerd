@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { startHand, applyAction, legalActions, seatsAfter, advanceStreetIfNeeded, finishHand, HandState } from "./engine";
+import { blindSeatsFor, startHand, applyAction, legalActions, seatsAfter, advanceStreetIfNeeded, finishHand, HandState } from "./engine";
 
 /** Deterministic 32-bit PRNG for seeded simulations (mulberry32). */
 function mulberry32(seed: number): () => number {
@@ -453,4 +453,15 @@ describe("audit regressions", () => {
    expect(s.currentBet - p.betStreet).toBeGreaterThanOrEqual(0);
   }
  });
+});
+
+describe("blindSeatsFor", () => {
+  it("heads-up the button posts the small blind", () => {
+    expect(blindSeatsFor(3, [3, 5])).toEqual({ sbSeat: 3, bbSeat: 5 });
+  });
+  it("3+ players: the two seats left of the button, wrapping around", () => {
+    expect(blindSeatsFor(0, [0, 2, 4])).toEqual({ sbSeat: 2, bbSeat: 4 });
+    expect(blindSeatsFor(4, [0, 2, 4])).toEqual({ sbSeat: 0, bbSeat: 2 });
+    expect(blindSeatsFor(2, [0, 2, 4, 7])).toEqual({ sbSeat: 4, bbSeat: 7 });
+  });
 });

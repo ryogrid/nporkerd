@@ -24,6 +24,9 @@ scheduled timers, and hosting for the single-page app. There is no other server.
 - **Synthesized sound.** WebAudio cues for dealing, bets, your turn, the last seconds of the clock, and wins,
   with a mute switch and a volume slider. There are no audio files.
 - **Keyboard shortcuts.** `F` fold, `C` check or call, `R` raise, `Shift+A` all-in.
+- **Beginner guidance.** Every screen has a "What to do now" banner, and the control to press pulses. Your current best hand shows under your cards.
+- **Help page** (`/help`) with screenshots, opened from the top bar in a new tab.
+- **English and Japanese.** Switch with the EN / 日本語 toggle in the top bar. English is the default.
 
 ## Fair play and security
 
@@ -100,6 +103,8 @@ src/               React SPA
   pages/           home, register, login, lobby, room
   components/      poker table, action bar, cards, chips, chat, sounds
   lib/             session, router, toasts, synthesized sound, formatting
+  i18n/            English/Japanese messages per area, Help page content
+public/help-img/   Help page screenshots (en, ja)
 design/            design documents (overview, data model, auth, engine, API, operations, TODO)
 ```
 

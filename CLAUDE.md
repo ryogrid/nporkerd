@@ -46,8 +46,8 @@ Production deploy: `npm run deploy` (`@convex-dev/static-hosting deploy`). It bu
 **Mutations must be retry-safe** under OCC. Write them as functions of current state (for example, reject if it isn't this player's turn). Queries must not write.
 
 **Frontend (`src/`)**
-- `main.tsx` wraps `App` in `ConvexProvider` → `ToastProvider` (`lib/toast.tsx`) → `SessionProvider` (`lib/auth.tsx`).
-- `lib/router.ts` is a small History-API router (`usePath`/`parseRoute`, routes `/`, `/register`, `/login`, `/lobby`, `/room/:id`). The static host falls back to `index.html`, so deep links work. `App.tsx` gates lobby and room on a validated session, and sends a signed-out visitor who opened an invite link back to that room after login (the path is kept in sessionStorage).
+- `main.tsx` wraps `App` in `ConvexProvider` → `I18nProvider` (`i18n/core.tsx`) → `ToastProvider` (`lib/toast.tsx`) → `SessionProvider` (`lib/auth.tsx`). `App` renders the top bar (EN/日本語 switch, Help link that opens `/help` in a new tab, sound, account) and the footer.
+- `lib/router.ts` is a small History-API router (`usePath`/`parseRoute`, routes `/`, `/register`, `/login`, `/lobby`, `/room/:id`, `/help`; `/help` is public). The static host falls back to `index.html`, so deep links work. `App.tsx` gates lobby and room on a validated session, and sends a signed-out visitor who opened an invite link back to that room after login (the path is kept in sessionStorage).
 - `SessionProvider` keeps the token in `sessionStorage` and validates it with `auth.me` (the profile and balance are reactive). Use `useSession()`; never call queries conditionally.
 - `lib/projection.ts` derives all client types from `FunctionReturnType<typeof api....>`. Never hand-copy server shapes.
 - `lib/errorCopy.ts` maps server error codes to UI text and is exhaustive at compile time. Adding a code to `convex/lib/errors.ts` breaks the typecheck until you add copy for it.
@@ -59,6 +59,10 @@ Production deploy: `npm run deploy` (`@convex-dev/static-hosting deploy`). It bu
   - `lastAction` survives into the next street.
   - `nextHandAt` is also set while the room is `waiting` during an auto-resume.
   - `lastHandResult.handNumber` says which hand a result belongs to.
-- Styling is plain CSS in `styles.css`: cards, chips and the table are drawn in CSS, and fonts come from Google Fonts in `index.html`. There are no image or audio assets. Sounds are synthesized with WebAudio in `lib/sound.ts`, which `App` unlocks on the first user gesture.
+  - `smallBlindSeat`/`bigBlindSeat` are the seats that posted this hand's blinds (from `blindSeatsFor` in the engine).
+- **i18n (English default, Japanese).** Every user-visible string goes through `src/i18n/`. Each area has a message file built with `defineMessages(en, ja)`, and a missing Japanese key is a compile error. Components use `const t = useT(areaMessages)` (`t("key", {n})`, `t.rich` for JSX). Non-React code uses `tr()`/`getLang()`, as `errorCopyFor` does. The language lives in localStorage (synced across tabs), and `?lang=ja` overrides it. The server sends English hand labels; the client maps them for display.
+- **Guidance for first-timers.** `components/Guide.tsx` has `<NextStep>` (the "What to do now" banner: every screen state should have one) and `<Tip id>` (a first-visit explainer, dismissed per browser). The `attn` CSS class pulses the one control the banner talks about.
+- **Help page.** `/help` is `pages/HelpPage.tsx`, with content in `i18n/help.ts`; section ids are linked from tips. Screenshots are in `public/help-img/<lang>/`. Retake them when the UI changes noticeably.
+- Styling is plain CSS in `styles.css`, plus per-area files (`styles-entry.css`, `styles-room.css`, `styles-help.css`) imported by their pages: cards, chips and the table are drawn in CSS, and fonts come from Google Fonts in `index.html`. The only image assets are the Help screenshots, and there are no audio files. Sounds are synthesized with WebAudio in `lib/sound.ts`, which `App` unlocks on the first user gesture.
 
 **HTTP:** `convex.config.ts` mounts static hosting at `/` and app HTTP routes under `/api`. There is no `convex/http.ts`.

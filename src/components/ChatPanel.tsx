@@ -11,6 +11,8 @@ import { errorCodeOf, errorCopyFor } from "../lib/errorCopy";
 import { playCue } from "../lib/sound";
 import { timeOfDay } from "../lib/format";
 import { useToast } from "../lib/toast";
+import { useT } from "../i18n/core";
+import { roomMessages } from "../i18n/room";
 
 const OPTIMISTIC_PREFIX = "local-";
 
@@ -29,6 +31,7 @@ export function ChatPanel({ roomId, sessionToken, me }: {
   me: MeProfile | undefined;
 }) {
   const toast = useToast();
+  const t = useT(roomMessages);
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -105,7 +108,7 @@ export function ChatPanel({ roomId, sessionToken, me }: {
 
   return (
     <div className="chat">
-      <h3 className="section-title">Table chat</h3>
+      <h3 className="section-title">{t("chatTitle")}</h3>
       <div
         className="chat-list"
         ref={listRef}
@@ -117,7 +120,7 @@ export function ChatPanel({ roomId, sessionToken, me }: {
         {loaded.status === "pending" ? <div className="chat-empty"><div className="spinner" /></div> : null}
         {loaded.status === "error" ? <div className="chat-empty">{errorCopyFor(loaded.error)}</div> : null}
         {loaded.status === "success" && messages.length === 0 ? (
-          <div className="chat-empty">No messages yet. Say hi 👋</div>
+          <div className="chat-empty">{t("chatEmpty")}</div>
         ) : null}
         {messages.map((m) => {
           const mine = me !== undefined && m.userId === me.userId;
@@ -136,11 +139,11 @@ export function ChatPanel({ roomId, sessionToken, me }: {
           className="input"
           value={draft}
           maxLength={CHAT_MAX_LENGTH}
-          placeholder="Message the table…"
+          placeholder={t("chatPlaceholder")}
           onChange={(e) => setDraft(e.target.value)}
-          aria-label="Chat message"
+          aria-label={t("chatAria")}
         />
-        <button type="submit" className="btn" disabled={draft.trim() === "" || sending}>Send</button>
+        <button type="submit" className="btn" disabled={draft.trim() === "" || sending}>{t("send")}</button>
       </form>
     </div>
   );

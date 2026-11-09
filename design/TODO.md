@@ -382,3 +382,15 @@ Deviations & decisions (Phase 4):
 - Not done: heartbeat throttling — with a 30 s beat any ≥ 20 s threshold still writes
   every beat, so it would not reduce re-renders; the seat-copy write is asserted by
   auth.test and left as is.
+
+## Post-launch: guidance, Help page, i18n (2026-11)
+
+- [x] Footer: "source code" (GitHub) on the left, "nporkerd powered by Convex" centred.
+- [x] First-timer guidance: a `NextStep` "What to do now" banner on every screen state,
+  dismissible first-visit `Tip`s, and an `attn` pulse on the control to click.
+- [x] `/help` page (public, opened in a new tab from the top bar) with real screenshots
+  per language in `public/help-img/<lang>/`.
+- [x] English/Japanese UI (`src/i18n/`); English default, switch always visible in the
+  top bar, stored in localStorage. Deviation from 07: the UI is no longer English-only.
+- [x] `getTableState` adds `smallBlindSeat` / `bigBlindSeat` (engine `blindSeatsFor`, also
+  used by `startHand`), so the client labels the blinds without re-deriving the rule.

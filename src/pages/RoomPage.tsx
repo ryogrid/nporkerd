@@ -2,7 +2,7 @@
 // `game.getTableState` the per-viewer hand projection, chat is separate.
 // Opening a public table joins it as a spectator automatically; private
 // tables ask for the passphrase first. Sitting down is one click on a chair.
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery_experimental } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
@@ -18,6 +18,13 @@ import { Navigate } from "../lib/router";
 import { useToast } from "../lib/toast";
 import { useNow } from "../lib/useNow";
 import { playCue } from "../lib/sound";
+import { NextStep, NextStepTone, Tip } from "../components/Guide";
+import { T, tr, useT } from "../i18n/core";
+import { roomMessages } from "../i18n/room";
+import { FAUCET_AMOUNT } from "../../convex/lib/constants";
+import "../styles-room.css";
+
+type RoomT = T<keyof typeof roomMessages.en>;
 
 export function RoomPage({ roomId, token, me, navigate }: {
   roomId: Id<"rooms">;
@@ -26,6 +33,7 @@ export function RoomPage({ roomId, token, me, navigate }: {
   navigate: Navigate;
 }) {
   const toast = useToast();
+  const t = useT(roomMessages);
   const roomQuery = useQuery_experimental({
     query: api.rooms.getRoom,
     args: { sessionToken: token, roomId },
@@ -53,7 +61,8 @@ export function RoomPage({ roomId, token, me, navigate }: {
 
   const [busy, setBusy] = useState<string | undefined>(undefined);
   const [passphrase, setPassphrase] = useState("");
-  const [joinError, setJoinError] = useState<string | undefined>(undefined);
+  // kept raw and translated at render, so it follows a language switch
+  const [joinFailure, setJoinFailure] = useState<{ err: unknown; withPassphrase: boolean } | undefined>(undefined);
   const autoJoined = useRef(false);
   const selfToggled = useRef(false);
   const wasSittingOut = useRef<boolean | undefined>(undefined);
@@ -67,7 +76,7 @@ export function RoomPage({ roomId, token, me, navigate }: {
   const sittingOutNow = room?.seats?.find((s) => s.userId === me.userId)?.state === "sittingOut";
   useEffect(() => {
     if (wasSittingOut.current === false && sittingOutNow && !selfToggled.current) {
-      toast.push("You were sat out after running out of time. Press “I'm back” to keep playing.", "info");
+      toast.push(tr(roomMessages, "satOutToast"), "info");
     }
     wasSittingOut.current = sittingOutNow;
     selfToggled.current = false;
@@ -80,7 +89,7 @@ export function RoomPage({ roomId, token, me, navigate }: {
     if (autoJoined.current) return;
     if (room.exists !== true || room.closed === true || room.requiresPassphrase === true) return;
     autoJoined.current = true;
-    joinRoom({ sessionToken: token, roomId }).catch((e: unknown) => setJoinError(errorCopyFor(e)));
+    joinRoom({ sessionToken: token, roomId }).catch((e: unknown) => setJoinFailure({ err: e, withPassphrase: false }));
   }, [room, member, joinRoom, token, roomId]);
 
   async function run(label: string, call: () => Promise<unknown>, okCue?: string): Promise<boolean> {
@@ -102,41 +111,47 @@ export function RoomPage({ roomId, token, me, navigate }: {
   async function submitPassphrase(e: FormEvent): Promise<void> {
     e.preventDefault();
     if (passphrase === "") return;
-    setJoinError(undefined);
+    setJoinFailure(undefined);
     setBusy("join");
     try {
       await joinRoom({ sessionToken: token, roomId, passphrase });
     } catch (err) {
-      setJoinError(errorCodeOf(err) === "JOIN_DENIED" ? "Wrong passphrase (or the table is closed)." : errorCopyFor(err));
+      setJoinFailure({ err, withPassphrase: true });
     } finally {
       setBusy(undefined);
     }
   }
 
+  const joinError = joinFailure === undefined
+    ? undefined
+    : joinFailure.withPassphrase && errorCodeOf(joinFailure.err) === "JOIN_DENIED"
+      ? t("wrongPassphrase")
+      : errorCopyFor(joinFailure.err);
+
   // ───────── gates ─────────
   if (roomQuery.status === "error") {
-    return <RoomGone navigate={navigate} text="This table link doesn't look right." />;
+    return <RoomGone navigate={navigate} text={t("badLink")} />;
   }
   if (room === undefined) {
-    return <div className="center-screen"><div className="spinner" /><div className="muted">Opening the table…</div></div>;
+    return <div className="center-screen"><div className="spinner" /><div className="muted">{t("opening")}</div></div>;
   }
   if (room.exists !== true) {
-    return <RoomGone navigate={navigate} text="This table doesn't exist." />;
+    return <RoomGone navigate={navigate} text={t("notExist")} />;
   }
   if (room.closed === true) {
-    return <RoomGone navigate={navigate} text="This table has closed." />;
+    return <RoomGone navigate={navigate} text={t("closedRoom")} />;
   }
   if (room.requiresPassphrase === true && !member) {
     return (
       <div className="auth-wrap">
         <form className="panel panel-pad stack" onSubmit={(e) => void submitPassphrase(e)}>
-          <h1 className="panel-title">🔒 Private table</h1>
-          <p className="muted" style={{ margin: 0 }}>Enter the passphrase the host shared with you.</p>
-          <input className="input" autoFocus type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} aria-label="Passphrase" />
+          <h1 className="panel-title">🔒 {t("privateTitle")}</h1>
+          <p className="muted" style={{ margin: 0 }}>{t("privateText")}</p>
+          <input className="input" autoFocus type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} aria-label={t("passphrase")} placeholder={t("passphrase")} />
           {joinError === undefined ? null : <div className="error-text" role="alert">{joinError}</div>}
           <div className="row">
-            <button type="submit" className="btn btn-primary" disabled={busy !== undefined || passphrase === ""}>Join table</button>
-            <button type="button" className="btn btn-ghost" onClick={() => navigate("/lobby")}>Back to lobby</button>
+            <button type="submit" className="btn btn-primary" disabled={busy !== undefined || passphrase === ""}>{t("joinTable")}</button>
+            <button type="button" className="btn btn-ghost" onClick={() => navigate("/lobby")}>{t("backToLobby")}</button>
           </div>
         </form>
       </div>
@@ -144,7 +159,7 @@ export function RoomPage({ roomId, token, me, navigate }: {
   }
   if (!member) {
     return joinError === undefined
-      ? <div className="center-screen"><div className="spinner" /><div className="muted">Taking you to the table…</div></div>
+      ? <div className="center-screen"><div className="spinner" /><div className="muted">{t("takingYou")}</div></div>
       : <RoomGone navigate={navigate} text={joinError} />;
   }
 
@@ -171,115 +186,192 @@ export function RoomPage({ roomId, token, me, navigate }: {
   }
 
   async function leave(): Promise<void> {
-    if (heroInHand && !window.confirm("Leaving now folds your hand. Leave the table?")) return;
+    if (heroInHand && !window.confirm(t("confirmLeave"))) return;
     const ok = await run("leave", () => leaveRoom({ sessionToken: token, roomId }));
     if (ok) navigate("/lobby");
   }
 
   async function stand(): Promise<void> {
-    if (heroInHand && !window.confirm("Standing up now folds your hand. Stand up?")) return;
+    if (heroInHand && !window.confirm(t("confirmStand"))) return;
     await run("stand", () => standUp({ sessionToken: token, roomId }), "action-fold");
   }
 
   function copyLink(): void {
     const url = `${window.location.origin}/room/${roomId}`;
     navigator.clipboard.writeText(url).then(
-      () => toast.push(room?.visibility === "private" ? "Link copied — share the passphrase too." : "Table link copied.", "success"),
+      () => toast.push(room?.visibility === "private" ? t("linkCopiedPrivate") : t("linkCopied"), "success"),
       () => toast.push(url, "info"),
     );
   }
 
-  // ───────── dock (the hero's area under the table) ─────────
-  let dock;
+  // ───────── dock: one "what to do now" message per state ─────────
+  const heroStack = heroRoomSeat?.stack ?? 0;
+  const maxSeats = Math.max(2, room.maxSeats ?? 9);
+  const emptySeats = maxSeats - seatedPlayers.length;
+  const turnSecs = table?.turnDeadline !== undefined ? secondsLeft(table.turnDeadline, now) : undefined;
+  const hostName = room.hostUsername ?? t("theHost");
+  const canStart = isHost && stage === "waiting" && room.status !== "playing" && table?.nextHandAt === undefined;
+  const canSit = heroSeat === undefined && canAfford && emptySeats > 0;
+  const canTopUp = heroStack < buyIn && me.balance > 0;
+  const actorText = actor === undefined
+    ? undefined
+    : turnSecs === undefined ? t("actorPart", { name: actor.username }) : t("actorPartSecs", { name: actor.username, n: turnSecs });
+
+  // which single control carries the pulsing "attn" ring
+  let attn: "backBtn" | "topUp" | undefined;
+  let tone: NextStepTone = "wait";
+  let icon = "⏳";
+  let title: ReactNode = "";
+  let detail: ReactNode = undefined;
+  let action: ReactNode = undefined;
+
+  const dealButtonFor = (pulse: boolean) => (
+    <button
+      type="button"
+      className={`btn btn-primary btn-lg${pulse ? " attn" : ""}`}
+      disabled={busy !== undefined || readyPlayers.length < 2}
+      title={readyPlayers.length < 2 ? t("dealNeeds") : t("dealTitle")}
+      onClick={() => void run("start", () => startGame({ sessionToken: token, roomId }))}
+    >
+      {t("deal")}
+    </button>
+  );
+  // the host can deal for the others even while not playing themselves
+  const hostCanDealOthers = canStart && readyPlayers.length >= 2;
+
   if (heroSeat === undefined) {
-    dock = (
-      <div className="dock-status">
-        <span>👀 You're watching.</span>
-        <span className="faint">
-          {canAfford
-            ? `Click an open chair to buy in for ${formatChips(buyIn)}.`
-            : `You need ${formatChips(buyIn)} chips to sit here — you have ${formatChips(me.balance)}.`}
-        </span>
-      </div>
-    );
-  } else if (table !== undefined && table.yourTurn && table.legal !== undefined) {
-    dock = (
-      <ActionBar
-        key={`${table.handNumber ?? 0}-${stage}-${table.legal.toCall}-${table.legal.minRaiseTo}-${table.legal.maxRaiseTo}`}
-        legal={table.legal}
-        roomId={roomId}
-        sessionToken={token}
-        myBet={heroTableSeat?.betStreet ?? 0}
-        pot={potTotal(table)}
-        bigBlind={bigBlind}
-      />
-    );
-  } else {
-    let status: string;
-    let detail = "";
-    if (sittingOut && !heroDealtIn) {
-      status = "☕ You're sitting out.";
-      detail = "You won't be dealt in until you come back.";
-    } else if (live) {
-      if (heroTableSeat?.folded === true) status = "You folded.";
-      else if (heroTableSeat?.allIn === true) status = "You're all-in. 🤞";
-      else if (!heroInHand) status = "You'll be dealt in next hand.";
-      else status = "Waiting…";
-      if (actor !== undefined) {
-        detail = `${actor.username} is acting${table?.turnDeadline !== undefined ? ` · ${secondsLeft(table.turnDeadline, now)}s` : ""}`;
-      } else {
-        detail = "Dealing the rest of the board…";
-      }
-    } else if (stage === "finished") {
-      status = "Hand complete.";
-      detail = table?.nextHandAt !== undefined ? `Next hand in ${secondsLeft(table.nextHandAt, now)}s` : stopping ? "The host ended the game." : "";
-    } else if (table?.nextHandAt !== undefined) {
-      status = "Starting again…";
-      detail = `Next hand in ${secondsLeft(table.nextHandAt, now)}s`;
+    if (!canAfford) {
+      tone = "do";
+      icon = "💰";
+      title = t("specPoorTitle", { buyIn: formatChips(buyIn) });
+      detail = t(me.balance < FAUCET_AMOUNT ? "specPoorFaucet" : "specPoorOther", { balance: formatChips(me.balance) });
+      action = <button type="button" className="btn btn-primary attn" onClick={() => navigate("/lobby")}>{t("goToLobby")}</button>;
+    } else if (emptySeats <= 0) {
+      icon = "👀";
+      title = t("specFullTitle");
+      detail = t("specFullDetail");
     } else {
-      status = readyPlayers.length < 2 ? "Waiting for more players." : isHost ? "Ready when you are." : `Waiting for ${room.hostUsername ?? "the host"} to deal.`;
-      detail = readyPlayers.length < 2 ? "Share the table link to invite friends." : "";
+      tone = "do";
+      icon = "🪑";
+      title = t("specSitTitle");
+      detail = t("specSitDetail", { buyIn: formatChips(buyIn), balance: formatChips(me.balance) });
     }
-    const canStart = isHost && stage === "waiting" && room.status !== "playing" && table?.nextHandAt === undefined;
-    if (stopping && live) detail = detail === "" ? "Last hand — the host is ending the game." : `${detail} · last hand`;
-    dock = (
-      <div className="dock-row">
-        <div className="dock-status grow" aria-live="polite">
-          <span>{status}</span>
-          {detail === "" ? null : <span className="faint">{detail}</span>}
-        </div>
-        {canStart ? (
-          <button
-            type="button"
-            className="btn btn-primary btn-lg"
-            disabled={busy !== undefined || readyPlayers.length < 2}
-            title={readyPlayers.length < 2 ? "Needs two seated players with chips" : undefined}
-            onClick={() => void run("start", () => startGame({ sessionToken: token, roomId }))}
-          >
-            ▶ Deal
-          </button>
-        ) : null}
-      </div>
-    );
+    if (hostCanDealOthers && action === undefined) action = dealButtonFor(false);
+  } else if (table !== undefined && table.yourTurn && table.legal !== undefined) {
+    const legal = table.legal;
+    const myBet = heroTableSeat?.betStreet ?? 0;
+    const currentBet = myBet + legal.toCall;
+    const canRaise = legal.maxRaiseTo >= legal.minRaiseTo && legal.maxRaiseTo > currentBet;
+    const callIsAllIn = legal.canCall && legal.callAmount >= legal.maxRaiseTo - myBet;
+    const options = [t("optFold")];
+    if (legal.canCheck) options.push(t("optCheck"));
+    else if (legal.canCall) options.push(callIsAllIn ? t("optCallAllIn") : t("optCall", { amount: formatChips(legal.callAmount) }));
+    if (canRaise) options.push(currentBet === 0 ? t("optBet") : t("optRaise"));
+    else if (!callIsAllIn && legal.maxRaiseTo > myBet) options.push(t("optAllIn"));
+    tone = "turn";
+    icon = "👉";
+    title = t("turnTitle", { options: joinOptions(t, options) });
+    detail = turnSecs === undefined
+      ? t("turnNoClock")
+      : t("turnClock", { n: turnSecs, auto: legal.canCheck ? t("autoCheck") : t("autoFold") });
+  } else if (sittingOut && !heroDealtIn) {
+    tone = "do";
+    icon = "☕";
+    title = t("sittingOutTitle");
+    detail = t("sittingOutDetail");
+    attn = "backBtn";
+    if (hostCanDealOthers) action = dealButtonFor(false);
+  } else if (heroStack === 0 && !heroDealtIn) {
+    tone = "do";
+    icon = "🪙";
+    title = t("brokeTitle");
+    if (canTopUp) {
+      detail = t("brokeTopUp");
+      attn = "topUp";
+      if (hostCanDealOthers) action = dealButtonFor(false);
+    } else {
+      detail = t("brokeFaucet");
+      action = (
+        <>
+          <button type="button" className="btn btn-primary attn" onClick={() => navigate("/lobby")}>{t("goToLobby")}</button>
+          {hostCanDealOthers ? dealButtonFor(false) : null}
+        </>
+      );
+    }
+  } else if (live) {
+    if (heroTableSeat?.folded === true) {
+      icon = "🙅";
+      title = t("foldedTitle");
+      detail = actorText ?? t("foldedDetail");
+    } else if (heroTableSeat?.allIn === true) {
+      icon = "🎲";
+      title = t("allInStepTitle");
+      detail = t("allInStepDetail");
+    } else if (!heroInHand) {
+      icon = "🕒";
+      title = t("nextHandTitle");
+      detail = actorText ?? t("nextHandDetail");
+    } else if (actor !== undefined) {
+      icon = "⏳";
+      title = turnSecs === undefined ? t("waitActor", { name: actor.username }) : t("waitActorSecs", { name: actor.username, n: turnSecs });
+      detail = t("waitActorDetail");
+    } else {
+      icon = "🎴";
+      title = t("runoutTitle");
+      detail = t("runoutDetail");
+    }
+    if (stopping) detail = <>{detail}<br />{t("lastHand")}</>;
+    if (sittingOut && heroDealtIn) detail = <>{detail}{detail === undefined ? null : <br />}{t("sitOutAfterHand")}</>;
+  } else if (stage === "finished") {
+    icon = "🏁";
+    title = t("finishedTitle");
+    detail = table?.nextHandAt !== undefined ? t("nextIn", { n: secondsLeft(table.nextHandAt, now) }) : stopping ? t("hostEnded") : undefined;
+  } else if (table?.nextHandAt !== undefined) {
+    icon = "⏱️";
+    title = t("resumeTitle", { n: secondsLeft(table.nextHandAt, now) });
+    detail = t("resumeDetail");
+  } else if (room.status === "playing") {
+    icon = "🔀";
+    title = t("shuffling");
+  } else if (readyPlayers.length < 2) {
+    tone = "do";
+    icon = "👋";
+    title = t("inviteStepTitle");
+    detail = t(room.visibility === "private" ? "inviteStepDetailPrivate" : "inviteStepDetail", { n: readyPlayers.length });
+    action = <button type="button" className="btn btn-primary attn" onClick={copyLink}>{t("copyInvite")}</button>;
+  } else if (canStart) {
+    tone = "do";
+    icon = "▶️";
+    title = t("dealStepTitle");
+    detail = t("dealStepDetail", { n: readyPlayers.length });
+    action = dealButtonFor(true);
+  } else {
+    icon = "⏳";
+    title = t("waitHostTitle", { host: hostName });
+    detail = t("waitHostDetail");
   }
 
-  const heroStack = heroRoomSeat?.stack ?? 0;
+  const nextStep = <NextStep tone={tone} icon={icon} title={title} detail={detail} action={action} />;
+  const showBar = heroSeat !== undefined && table !== undefined && table.yourTurn && table.legal !== undefined;
+
 
   return (
     <div className="room">
       <TableSounds table={table} heroName={me.username} now={now} />
       <div>
         <div className="room-header">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate("/lobby")} aria-label="Back to lobby">← Lobby</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate("/lobby")} aria-label={t("lobbyAria")}>{t("lobbyBtn")}</button>
           <h1>{room.name}</h1>
           <div className="room-stats">
-            {room.status === "playing" ? <span className="badge badge-live">Live</span> : <span className="badge">Waiting</span>}
-            {room.visibility === "private" ? <span className="badge badge-lock">🔒 Private</span> : null}
-            <span className="badge badge-gold">{formatChips(room.smallBlind ?? 0)}/{formatChips(bigBlind)}</span>
+            {room.status === "playing"
+              ? <span className="badge badge-live" title={t("badgeLiveTitle")}>{t("badgeLive")}</span>
+              : <span className="badge" title={t("badgeWaitingTitle")}>{t("badgeWaiting")}</span>}
+            {room.visibility === "private" ? <span className="badge badge-lock" title={t("badgePrivateTitle")}>🔒 {t("badgePrivate")}</span> : null}
+            <span className="badge badge-gold" title={t("blindsBadgeTitle", { sb: formatChips(room.smallBlind ?? 0), bb: formatChips(bigBlind) })}>{formatChips(room.smallBlind ?? 0)}/{formatChips(bigBlind)}</span>
           </div>
           <span className="grow" />
-          <button type="button" className="btn btn-sm" onClick={copyLink}>🔗 Invite</button>
-          <button type="button" className="btn btn-sm btn-danger" disabled={busy !== undefined} onClick={() => void leave()}>Leave</button>
+          <button type="button" className="btn btn-sm" onClick={copyLink} title={t("inviteTitle")}>🔗 {t("invite")}</button>
+          <button type="button" className="btn btn-sm btn-danger" disabled={busy !== undefined} onClick={() => void leave()} title={t("leaveTitle")}>{t("leave")}</button>
         </div>
 
         {tableQuery.status === "error" ? (
@@ -291,46 +383,79 @@ export function RoomPage({ roomId, token, me, navigate }: {
             heroSeat={heroSeat}
             heroName={me.username}
             now={now}
-            onSit={heroSeat === undefined ? (i) => void sit(i) : undefined}
+            onSit={canSit ? (i) => void sit(i) : undefined}
             sitBusy={busy !== undefined}
           />
         )}
 
-        <div className="dock">
-          {dock}
+        <div className="dock room-dock">
+          {nextStep}
+          {showBar && table?.legal !== undefined ? (
+            <div className="dock-bar">
+              <ActionBar
+                key={`${table.handNumber ?? 0}-${stage}-${table.legal.toCall}-${table.legal.minRaiseTo}-${table.legal.maxRaiseTo}`}
+                legal={table.legal}
+                roomId={roomId}
+                sessionToken={token}
+                myBet={heroTableSeat?.betStreet ?? 0}
+                pot={potTotal(table)}
+                bigBlind={bigBlind}
+              />
+            </div>
+          ) : null}
           {heroSeat !== undefined ? (
-            <div className="hint-row" style={{ alignItems: "center" }}>
-              <span>Stack <b className="nums" style={{ color: "var(--gold)" }}>{formatChips(heroStack)}</b></span>
-              <span>Bankroll <b className="nums">{formatChips(me.balance)}</b></span>
+            <div className="hint-row seat-row">
+              <span title={t("stackTitle")}>{t("stack")} <b className="nums" style={{ color: "var(--gold)" }}>{formatChips(heroStack)}</b></span>
+              <span title={t("bankrollTitle")}>{t("bankroll")} <b className="nums">{formatChips(me.balance)}</b></span>
               <span className="grow" />
               <button
                 type="button"
-                className="btn btn-sm"
+                className={`btn btn-sm${attn === "backBtn" ? " btn-primary attn" : ""}`}
                 disabled={busy !== undefined}
+                title={sittingOut ? t("imBackTitle") : t("sitOutTitle")}
                 onClick={() => { selfToggled.current = true; void run("sitout", () => toggleSitOut({ sessionToken: token, roomId, sittingOut: !sittingOut }), "click"); }}
               >
-                {sittingOut ? "▶ I'm back" : "☕ Sit out"}
+                {sittingOut ? t("imBack") : t("sitOut")}
               </button>
-              {heroStack < buyIn && me.balance > 0 ? (
+              {canTopUp ? (
                 <button
                   type="button"
-                  className="btn btn-sm"
+                  className={`btn btn-sm${attn === "topUp" ? " btn-primary attn" : ""}`}
                   disabled={busy !== undefined || heroDealtIn}
-                  title={heroDealtIn ? "Available once this hand is over" : undefined}
+                  title={heroDealtIn ? t("topUpLater") : t("topUpTitle", { amount: formatChips(buyIn) })}
                   onClick={() => void run("topup", () => topUp({ sessionToken: token, roomId }), "action-call")}
                 >
-                  ＋ Top up to {formatChips(buyIn)}
+                  {t("topUp", { amount: formatChips(buyIn) })}
                 </button>
               ) : null}
-              <button type="button" className="btn btn-sm" disabled={busy !== undefined} onClick={() => void stand()}>
-                Stand up
+              <button type="button" className="btn btn-sm" disabled={busy !== undefined} title={t("standUpTitle")} onClick={() => void stand()}>
+                {t("standUp")}
               </button>
             </div>
           ) : null}
+          {showBar ? (
+            <div className="hint-row keys-row">
+              <span>
+                {t.rich("keys", {
+                  f: <span className="kbd">F</span>,
+                  c: <span className="kbd">C</span>,
+                  r: <span className="kbd">R</span>,
+                  a: <span className="kbd">Shift+A</span>,
+                })}
+              </span>
+            </div>
+          ) : null}
         </div>
-        {heroSeat !== undefined && table?.yourTurn === true ? (
-          <div className="hint-row"><span>Keys: <span className="kbd">F</span> fold · <span className="kbd">C</span> check/call · <span className="kbd">R</span> bet/raise · <span className="kbd">Shift+A</span> all-in</span></div>
-        ) : null}
+        <div className="room-tip">
+          <Tip id="room" title={t("tipTitle")} helpAnchor="hand">
+            <ol>
+              <li>{t("tip1")}</li>
+              <li>{t("tip2")}</li>
+              <li>{t("tip3")}</li>
+              <li>{t("tip4")}</li>
+            </ol>
+          </Tip>
+        </div>
       </div>
 
       <aside className="side">
@@ -338,31 +463,39 @@ export function RoomPage({ roomId, token, me, navigate }: {
           <ChatPanel roomId={roomId} sessionToken={token} me={me} />
         </div>
         <div className="panel stack">
-          <h3 className="section-title" style={{ margin: 0 }}>Table</h3>
+          <h3 className="section-title" style={{ margin: 0 }}>{t("tableTitle")}</h3>
           <dl className="info-list">
-            <dt>Blinds</dt><dd>{formatChips(room.smallBlind ?? 0)} / {formatChips(bigBlind)}</dd>
-            <dt>Buy-in</dt><dd>{formatChips(buyIn)}</dd>
-            <dt>Turn clock</dt><dd>{room.turnSeconds === 0 ? "off" : `${room.turnSeconds ?? 0}s`}</dd>
-            <dt>Host</dt><dd>{room.hostUsername}{isHost ? " (you)" : ""}</dd>
+            <dt title={t("blindsTitle")}>{t("blinds")}</dt><dd title={t("blindsTitle")}>{formatChips(room.smallBlind ?? 0)} / {formatChips(bigBlind)}</dd>
+            <dt title={t("buyInTitle")}>{t("buyIn")}</dt><dd title={t("buyInTitle")}>{formatChips(buyIn)}</dd>
+            <dt title={t("turnClockTitle")}>{t("turnClockLabel")}</dt><dd title={t("turnClockTitle")}>{room.turnSeconds === 0 ? t("clockOff") : t("secondsShort", { n: room.turnSeconds ?? 0 })}</dd>
+            <dt>{t("host")}</dt><dd>{room.hostUsername}{isHost ? t("youSuffix") : ""}</dd>
           </dl>
-          <PlayersList room={room} meId={me.userId} />
-          {isHost ? <HostControls room={room} stage={stage} pendingRestart={table?.nextHandAt !== undefined && stage === "waiting"} busy={busy !== undefined} run={run} endGame={() => endGame({ sessionToken: token, roomId })} closeRoom={() => closeRoom({ sessionToken: token, roomId })} onClosed={() => navigate("/lobby")} /> : null}
+          <PlayersList t={t} room={room} meId={me.userId} />
+          {isHost ? <HostControls t={t} room={room} stage={stage} pendingRestart={table?.nextHandAt !== undefined && stage === "waiting"} busy={busy !== undefined} run={run} endGame={() => endGame({ sessionToken: token, roomId })} closeRoom={() => closeRoom({ sessionToken: token, roomId })} onClosed={() => navigate("/lobby")} /> : null}
         </div>
       </aside>
     </div>
   );
 }
 
-function PlayersList({ room, meId }: { room: RoomProfile; meId: Id<"users"> }) {
+/** "Fold, Check or Raise" / 「フォールド・チェック・レイズ」. */
+function joinOptions(t: RoomT, options: string[]): string {
+  if (options.length <= 1) return options.join("");
+  if (options.length === 2) return t("optJoinTwo", { a: options[0], b: options[1] });
+  return t("optJoinMany", { list: options.slice(0, -1).join(t("optSep")), last: options[options.length - 1] });
+}
+
+function PlayersList({ t, room, meId }: { t: RoomT; room: RoomProfile; meId: Id<"users"> }) {
   const seats = [...(room.seats ?? [])].sort((a, b) => (a.seatIndex < 0 ? 99 : a.seatIndex) - (b.seatIndex < 0 ? 99 : b.seatIndex));
   return (
     <div className="players">
+      <h3 className="section-title" style={{ margin: "4px 0 0" }}>{t("players")}</h3>
       {seats.map((s) => (
         <div key={s.userId} className="player-row">
           <span className={`dot${s.online ? " on" : ""}`} />
-          <span className="grow">{s.username}{s.userId === meId ? " (you)" : ""}</span>
+          <span className="grow">{s.username}{s.userId === meId ? t("youSuffix") : ""}</span>
           <span className="faint nums">
-            {s.seatIndex < 0 || s.state === "left" ? "watching" : s.state === "sittingOut" ? `away · ${formatChips(s.stack)}` : formatChips(s.stack)}
+            {s.seatIndex < 0 || s.state === "left" ? t("watching") : s.state === "sittingOut" ? t("away", { stack: formatChips(s.stack) }) : formatChips(s.stack)}
           </span>
         </div>
       ))}
@@ -370,7 +503,8 @@ function PlayersList({ room, meId }: { room: RoomProfile; meId: Id<"users"> }) {
   );
 }
 
-function HostControls({ room, stage, pendingRestart, busy, run, endGame, closeRoom, onClosed }: {
+function HostControls({ t, room, stage, pendingRestart, busy, run, endGame, closeRoom, onClosed }: {
+  t: RoomT;
   room: RoomProfile;
   stage: string;
   pendingRestart: boolean;
@@ -383,43 +517,45 @@ function HostControls({ room, stage, pendingRestart, busy, run, endGame, closeRo
   const playing = room.status === "playing" || pendingRestart;
   return (
     <div className="stack" style={{ gap: 8, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-      <h3 className="section-title" style={{ margin: 0 }}>Host controls</h3>
+      <h3 className="section-title" style={{ margin: 0 }}>{t("hostControls")}</h3>
+      <span className="faint host-help">{t("hostHelp")}</span>
       <div className="row">
         <button
           type="button"
           className="btn btn-sm"
           disabled={busy || !playing || room.stopAfterHand === true}
-          title={playing ? "Stop after the current hand" : "No game running"}
+          title={playing ? t("endTitle") : t("noGame")}
           onClick={() => void run("end", endGame)}
         >
-          {room.stopAfterHand === true ? "Ending after this hand" : "⏹ End game"}
+          {room.stopAfterHand === true ? t("endingAfter") : t("endGame")}
         </button>
         <button
           type="button"
           className="btn btn-sm btn-danger"
           disabled={busy || (stage !== "finished" && stage !== "waiting")}
-          title={stage !== "finished" && stage !== "waiting" ? "Available between hands" : undefined}
+          title={stage !== "finished" && stage !== "waiting" ? t("closeBetween") : t("closeTitle")}
           onClick={() => {
-            if (!window.confirm("Close this table for everyone? Seated players get their chips back.")) return;
+            if (!window.confirm(t("confirmClose"))) return;
             void run("close", closeRoom).then((ok) => { if (ok) onClosed(); });
           }}
         >
-          Close table
+          {t("closeTable")}
         </button>
       </div>
       {playing && stage !== "finished" && stage !== "waiting" && room.stopAfterHand !== true ? (
-        <span className="faint">Ending lets the current hand finish first.</span>
+        <span className="faint">{t("endHelp")}</span>
       ) : null}
     </div>
   );
 }
 
 function RoomGone({ navigate, text }: { navigate: Navigate; text: string }) {
+  const t = useT(roomMessages);
   return (
     <div className="center-screen">
       <div style={{ fontSize: 44 }}>🚪</div>
       <div className="muted">{text}</div>
-      <button type="button" className="btn btn-primary" onClick={() => navigate("/lobby")}>Back to the lobby</button>
+      <button type="button" className="btn btn-primary" onClick={() => navigate("/lobby")}>{t("backToTheLobby")}</button>
     </div>
   );
 }

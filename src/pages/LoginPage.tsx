@@ -1,14 +1,19 @@
 // Login: username + the private key (pasted, or the key file dropped/picked).
 // Every failure shows the same sentence (no username oracle, design/03 §4.3).
-import { DragEvent, FormEvent, useRef, useState } from "react";
+// A NextStep banner and the attention ring walk key → username → Log in, and a
+// "Lost your key?" note says the only way forward is a new account.
+import { DragEvent, FormEvent, useRef, useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { USERNAME_REGEX } from "../../convex/lib/constants";
+import { STARTING_BALANCE, USERNAME_MAX, USERNAME_MIN, USERNAME_REGEX } from "../../convex/lib/constants";
 import { describeSecretKey, parseKeyFile } from "../lib/keys";
 import { loginWithKeypair, useSession } from "../lib/auth";
+import { formatChips } from "../lib/format";
 import { Navigate } from "../lib/router";
-
-const GENERIC_FAILURE = "Login failed: unknown username or wrong key.";
+import { NextStep } from "../components/Guide";
+import { useT } from "../i18n/core";
+import { authMessages } from "../i18n/auth";
+import "../styles-entry.css";
 
 /** The key file starts with a line naming the account; pick it up if present. */
 function usernameFromFile(text: string): string | undefined {
@@ -17,12 +22,15 @@ function usernameFromFile(text: string): string | undefined {
 }
 
 export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAuth: string }) {
+  const t = useT(authMessages);
   const requestChallenge = useMutation(api.auth.requestLoginChallenge);
   const login = useMutation(api.auth.login);
   const session = useSession();
   const [username, setUsername] = useState("");
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
+  // the message was written in the old language: drop it on a switch
+  useEffect(() => setError(undefined), [t.lang]);
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -40,7 +48,7 @@ export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAu
   async function loadFile(file: File): Promise<void> {
     const text = await file.text();
     if (parseKeyFile(text) === undefined) {
-      setError("That file doesn't contain a nporkerd key.");
+      setError(t("fileNotKey"));
       return;
     }
     setError(undefined);
@@ -54,11 +62,11 @@ export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAu
     if (busy) return;
     const name = username.trim();
     if (!USERNAME_REGEX.test(name)) {
-      setError("Enter your username (3–20 letters, digits or underscores).");
+      setError(t("enterUsername", { min: USERNAME_MIN, max: USERNAME_MAX }));
       return;
     }
     if (parsed === undefined || fingerprint === undefined) {
-      setError("Paste your npk_… key or drop the key file you downloaded.");
+      setError(t("needKey"));
       return;
     }
     setBusy(true);
@@ -68,7 +76,7 @@ export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAu
       session.signIn(token);
       navigate(afterAuth, { replace: true });
     } catch {
-      setError(GENERIC_FAILURE);
+      setError(t("genericFailure"));
       setBusy(false);
     }
   }
@@ -80,30 +88,29 @@ export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAu
     if (file !== undefined) void loadFile(file);
   }
 
+  const haveKey = fingerprint !== undefined;
+  const haveName = USERNAME_REGEX.test(username.trim());
+  const phase = !haveKey ? "key" : !haveName ? "name" : "go";
+  const next = phase === "key"
+    ? { icon: "🔑", title: t("loginNextKey"), detail: t("loginNextKeyDetail") }
+    : phase === "name"
+      ? { icon: "✍️", title: t("loginNextName"), detail: t("loginNextNameDetail") }
+      : { icon: "✅", title: t("loginNextGo"), detail: t("loginNextGoDetail") };
+
   return (
     <div className="auth-wrap">
       <form className="panel panel-pad stack" onSubmit={(e) => void submit(e)}>
-        <h1 className="panel-title">Welcome back</h1>
-        <label className="field">
-          <span>Username</span>
-          <input className="input" autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Private key</span>
-          <textarea
-            className="textarea"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder="npk_…"
-            spellCheck={false}
-            autoComplete="off"
-          />
-          {fingerprint !== undefined ? (
-            <small>Key fingerprint <span className="fingerprint">{fingerprint}</span></small>
-          ) : key.trim() !== "" ? <small className="error-text">This doesn't look like a nporkerd key yet.</small> : null}
-        </label>
+        <h1 className="panel-title">{t("loginTitle")}</h1>
+        <NextStep icon={next.icon} title={next.title} detail={next.detail} />
+        <div className="login-ways">
+          <span>{t("waysTitle")}</span>
+          <ul>
+            <li>📄 {t("wayFile")}</li>
+            <li>📋 {t("wayPaste")}</li>
+          </ul>
+        </div>
         <div
-          className={`dropzone${over ? " over" : ""}`}
+          className={`dropzone${over ? " over" : ""}${phase === "key" ? " attn" : ""}`}
           role="button"
           tabIndex={0}
           onClick={() => fileInput.current?.click()}
@@ -112,8 +119,8 @@ export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAu
           onDragLeave={() => setOver(false)}
           onDrop={onDrop}
         >
-          <span>📄 Drop your key file here, or click to choose it</span>
-          <span className="faint">nporkerd-key-&lt;name&gt;.txt</span>
+          <span>{t("dropzone")}</span>
+          <span className="faint">{t("dropzoneHint")}</span>
           <input
             ref={fileInput}
             type="file"
@@ -126,12 +133,39 @@ export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAu
             }}
           />
         </div>
+        <label className="field">
+          <span>{t("privateKeyLabel")}</span>
+          <textarea
+            className="textarea"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder={t("keyPlaceholder")}
+            spellCheck={false}
+            autoComplete="off"
+          />
+          {fingerprint !== undefined ? (
+            <small>{t.rich("keyFingerprint", { fp: <span className="fingerprint">{fingerprint}</span> })}</small>
+          ) : key.trim() !== "" ? <small className="error-text">{t("notAKeyYet")}</small> : null}
+        </label>
+        <label className="field">
+          <span>{t("usernameLabel")}</span>
+          <input
+            className={`input${phase === "name" ? " attn" : ""}`}
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </label>
         {error === undefined ? null : <div className="error-text" role="alert">{error}</div>}
-        <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
-          {busy ? "Verifying…" : "Log in"}
+        <button type="submit" className={`btn btn-primary btn-lg btn-block${phase === "go" && !busy ? " attn" : ""}`} disabled={busy}>
+          {busy ? t("verifying") : t("logIn")}
         </button>
+        <div className="lost-key">
+          <strong>{t("lostTitle")}</strong>{" "}
+          <span>{t("lostText", { chips: formatChips(STARTING_BALANCE) })}</span>
+        </div>
         <div className="auth-switch">
-          New here? <button type="button" className="link-btn" onClick={() => navigate("/register")}>Create an account</button>
+          {t("newHere")} <button type="button" className="link-btn" onClick={() => navigate("/register")}>{t("createLink")}</button>
         </div>
       </form>
     </div>

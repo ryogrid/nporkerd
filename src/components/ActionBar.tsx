@@ -10,6 +10,8 @@ import { errorCopyFor } from "../lib/errorCopy";
 import { formatChips } from "../lib/format";
 import { playCue } from "../lib/sound";
 import { useToast } from "../lib/toast";
+import { useT } from "../i18n/core";
+import { roomMessages } from "../i18n/room";
 
 export type LegalBlock = {
   canCheck: boolean;
@@ -34,6 +36,7 @@ export function ActionBar({ legal, roomId, sessionToken, myBet, pot, bigBlind }:
 }) {
   const act = useMutation(api.game.act);
   const toast = useToast();
+  const t = useT(roomMessages);
   const [busy, setBusy] = useState(false);
   const currentBet = myBet + legal.toCall;
   const allInTo = legal.maxRaiseTo;
@@ -45,7 +48,8 @@ export function ActionBar({ legal, roomId, sessionToken, myBet, pot, bigBlind }:
   const setTarget = (v: number) => { setTargetRaw(v); setText(String(Math.max(legal.minRaiseTo, Math.min(legal.maxRaiseTo, Math.round(v))))); };
 
   const clamp = (v: number) => Math.max(legal.minRaiseTo, Math.min(legal.maxRaiseTo, Math.round(v)));
-  const betWord = currentBet === 0 ? "Bet" : "Raise to";
+  const isBet = currentBet === 0;
+  const betWord = isBet ? t("bet") : t("raiseTo");
 
   async function fire(kind: ActionKind, amount?: number): Promise<void> {
     if (busy) return;
@@ -92,11 +96,12 @@ export function ActionBar({ legal, roomId, sessionToken, myBet, pot, bigBlind }:
 
   // pot-sized raise: call first, then raise by the pot that results
   const potRaise = (fraction: number) => clamp(currentBet + fraction * (pot + legal.toCall));
-  const presets: Array<[string, number]> = [
-    ["Min", legal.minRaiseTo],
-    ["½ Pot", potRaise(0.5)],
-    ["¾ Pot", potRaise(0.75)],
-    ["Pot", potRaise(1)],
+  const presets: Array<[string, "presetMinTitle" | "presetHalfTitle" | "presetThreeQTitle" | "presetPotTitle" | "presetMaxTitle", number]> = [
+    [t("presetMin"), "presetMinTitle", legal.minRaiseTo],
+    [t("presetHalf"), "presetHalfTitle", potRaise(0.5)],
+    [t("presetThreeQ"), "presetThreeQTitle", potRaise(0.75)],
+    [t("presetPot"), "presetPotTitle", potRaise(1)],
+    [t("presetMax"), "presetMaxTitle", legal.maxRaiseTo],
   ];
   const span = Math.max(1, legal.maxRaiseTo - legal.minRaiseTo);
   const shown = clamp(target);
@@ -107,6 +112,10 @@ export function ActionBar({ legal, roomId, sessionToken, myBet, pot, bigBlind }:
     <div className="stack" style={{ gap: 12 }}>
       {canRaise ? (
         <div className="raise-panel">
+          <div className="raise-help">
+            <span>{isBet ? t("raiseHelpBet") : t("raiseHelpRaise")}</span>
+            <span className="nums faint">{t("raiseRange", { min: formatChips(legal.minRaiseTo), max: formatChips(legal.maxRaiseTo) })}</span>
+          </div>
           <input
             className="range"
             type="range"
@@ -116,7 +125,7 @@ export function ActionBar({ legal, roomId, sessionToken, myBet, pot, bigBlind }:
             value={shown}
             style={{ ["--fill" as string]: fill }}
             onChange={(e) => setTarget(Number(e.target.value))}
-            aria-label={`${betWord} amount`}
+            aria-label={isBet ? t("amountSliderBet") : t("amountSliderRaise")}
           />
           <input
             className="input amount-input"
@@ -133,41 +142,53 @@ export function ActionBar({ legal, roomId, sessionToken, myBet, pot, bigBlind }:
             }}
             onBlur={() => setText(String(clamp(target)))}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setText(String(clamp(target))); void raiseNow(); } }}
-            aria-label="amount in chips"
+            aria-label={t("amountInput")}
+            title={t("amountInput")}
           />
           <div className="presets">
-            {presets.map(([label, value]) => (
-              <button key={label} type="button" className="btn btn-sm" disabled={busy} onClick={() => { setTarget(value); playCue("click"); }}>
-                {label}
+            {presets.map(([label, titleKey, value]) => (
+              <button
+                key={titleKey}
+                type="button"
+                className={`btn btn-sm${value === shown ? " preset-on" : ""}`}
+                disabled={busy}
+                title={t(titleKey, { amount: formatChips(value) })}
+                aria-pressed={value === shown}
+                onClick={() => { setTarget(value); playCue("click"); }}
+              >
+                {label} <span className="preset-amt nums">{formatChips(value)}</span>
               </button>
             ))}
-            <button type="button" className="btn btn-sm" disabled={busy} onClick={() => { setTarget(legal.maxRaiseTo); playCue("click"); }}>
-              Max
-            </button>
           </div>
         </div>
       ) : null}
       <div className="act-btns" style={{ gridTemplateColumns: `repeat(${2 + (canRaise ? 1 : 0) + (callIsAllIn ? 0 : 1)}, minmax(0, 1fr))` }}>
-        <button type="button" className="act act-fold" disabled={busy} onClick={() => void fire("fold")}>
-          Fold <small><span className="kbd">F</span></small>
+        <button type="button" className="act act-fold" disabled={busy} title={t("foldTitle")} onClick={() => void fire("fold")}>
+          {t("fold")} <small><span className="kbd">F</span></small>
         </button>
         {legal.canCheck ? (
-          <button type="button" className="act act-call" disabled={busy} onClick={() => void fire("check")}>
-            Check <small><span className="kbd">C</span></small>
+          <button type="button" className="act act-call" disabled={busy} title={t("checkTitle")} onClick={() => void fire("check")}>
+            {t("check")} <small><span className="kbd">C</span></small>
           </button>
         ) : (
-          <button type="button" className="act act-call" disabled={busy || !legal.canCall} onClick={() => void fire("call")}>
-            {callIsAllIn ? "Call all-in" : "Call"} <small>{formatChips(legal.callAmount)} <span className="kbd">C</span></small>
+          <button type="button" className="act act-call" disabled={busy || !legal.canCall} title={t("callTitle", { amount: formatChips(legal.callAmount) })} onClick={() => void fire("call")}>
+            {callIsAllIn ? t("callAllIn") : t("call")} <small>{formatChips(legal.callAmount)} <span className="kbd">C</span></small>
           </button>
         )}
         {canRaise ? (
-          <button type="button" className="act act-raise" disabled={busy} onClick={() => void raiseNow()}>
-            {shown >= allInTo ? "All-in" : betWord} <small>{formatChips(shown)} <span className="kbd">R</span></small>
+          <button
+            type="button"
+            className="act act-raise"
+            disabled={busy}
+            title={shown >= allInTo ? t("allInTitle", { amount: formatChips(allInTo) }) : isBet ? t("betTitle", { amount: formatChips(shown) }) : t("raiseTitle", { amount: formatChips(shown) })}
+            onClick={() => void raiseNow()}
+          >
+            {shown >= allInTo ? t("allIn") : betWord} <small>{formatChips(shown)} <span className="kbd">R</span></small>
           </button>
         ) : null}
         {callIsAllIn ? null : (
-          <button type="button" className="act act-allin" disabled={busy || !canAllIn} onClick={() => void fire("allIn")}>
-            All-in <small>{formatChips(allInTo)} <span className="kbd">⇧A</span></small>
+          <button type="button" className="act act-allin" disabled={busy || !canAllIn} title={t("allInTitle", { amount: formatChips(allInTo) })} onClick={() => void fire("allIn")}>
+            {t("allIn")} <small>{formatChips(allInTo)} <span className="kbd">⇧A</span></small>
           </button>
         )}
       </div>

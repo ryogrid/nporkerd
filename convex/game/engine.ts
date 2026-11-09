@@ -122,6 +122,16 @@ function seatOrder(buttonSeat: number, seats: number[]): number[] {
  return seatsAfter(buttonSeat, seats);
 }
 
+/**
+ * Small/big blind seats for a hand dealt to `seats` with this button.
+ * Heads-up the button posts the small blind (04 §3). Exported so the table
+ * projection can label the blinds without re-deriving the rule.
+ */
+export function blindSeatsFor(buttonSeat: number, seats: number[]): { sbSeat: number; bbSeat: number } {
+ const order = seatOrder(buttonSeat, seats);
+ return seats.length === 2 ? { sbSeat: buttonSeat, bbSeat: order[0] } : { sbSeat: order[0], bbSeat: order[1] };
+}
+
 /** Next actor clockwise from `from` who still needs to act this street. */
 function nextActorSeat(players: HandPlayer[], from: number, currentBet: number): number {
  // 04 §8: with ≤ 1 player still able to bet there is no betting left unless
@@ -200,8 +210,7 @@ export function startHand(input: StartHandInput): StartHandResult {
   }
  }
 
- const sbSeat = participants.length === 2 ? buttonSeat : order[0];
- const bbSeat = participants.length === 2 ? order[0] : order[1];
+ const { sbSeat, bbSeat } = blindSeatsFor(buttonSeat, seats);
  commit(sbSeat, input.smallBlind);
  commit(bbSeat, input.bigBlind);
 

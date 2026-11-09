@@ -1,6 +1,8 @@
 // Registration: pick a name → a keypair is generated locally → the private key
 // is shown once (copy / download, mandatory acknowledgement) → automatic login.
-import { FormEvent, useState } from "react";
+// A step indicator (Name → Save your key → Play) and a NextStep banner say what
+// to do at each point; the attention ring walks download → tick → continue.
+import { FormEvent, useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { USERNAME_MAX, USERNAME_MIN, USERNAME_REGEX } from "../../convex/lib/constants";
@@ -8,10 +10,36 @@ import { buildKeyFile, generateKeyPair } from "../lib/keys";
 import { errorCodeOf, errorCopyFor } from "../lib/errorCopy";
 import { loginWithKeypair, useSession } from "../lib/auth";
 import { Navigate } from "../lib/router";
+import { NextStep } from "../components/Guide";
+import { useT } from "../i18n/core";
+import { authMessages } from "../i18n/auth";
+import "../styles-entry.css";
 
 type Keys = { username: string; publicKey: string; secretKey: string; fingerprint: string };
 
+/** 1 Name → 2 Save your key → 3 Play; `current` is 1-based. */
+export function SignupSteps({ current }: { current: 1 | 2 | 3 }) {
+  const t = useT(authMessages);
+  const labels = [t("step1"), t("step2"), t("step3")];
+  return (
+    <ol className="signup-steps" aria-label={t("stepsLabel")}>
+      {labels.map((label, i) => {
+        const n = i + 1;
+        const state = n < current ? "done" : n === current ? "current" : "todo";
+        return (
+          <li key={label} className={`signup-step ${state}`} aria-current={state === "current" ? "step" : undefined}>
+            <span className="signup-num" aria-hidden="true">{state === "done" ? "✓" : n}</span>
+            <span className="signup-label">{label}</span>
+            {state === "done" ? <span className="entry-sr"> ({t("stepDone")})</span> : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function RegisterPage({ navigate, afterAuth }: { navigate: Navigate; afterAuth: string }) {
+  const t = useT(authMessages);
   const register = useMutation(api.auth.register);
   const requestChallenge = useMutation(api.auth.requestLoginChallenge);
   const login = useMutation(api.auth.login);
@@ -22,17 +50,21 @@ export function RegisterPage({ navigate, afterAuth }: { navigate: Navigate; afte
   const [acknowledged, setAcknowledged] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  // the message was written in the old language: drop it on a switch
+  useEffect(() => setError(undefined), [t.lang]);
   const [busy, setBusy] = useState(false);
 
+  const lengthOk = username.length >= USERNAME_MIN && username.length <= USERNAME_MAX;
+  const charsOk = username !== "" && /^[A-Za-z0-9_]*$/.test(username);
   const nameProblem = username === "" ? undefined
-    : username.length < USERNAME_MIN || username.length > USERNAME_MAX ? `${USERNAME_MIN}–${USERNAME_MAX} characters`
-    : !USERNAME_REGEX.test(username) ? "letters, digits and underscore only" : undefined;
+    : !lengthOk ? t("nameProblemLength", { min: USERNAME_MIN, max: USERNAME_MAX })
+    : !USERNAME_REGEX.test(username) ? t("nameProblemChars") : undefined;
 
   async function create(e: FormEvent): Promise<void> {
     e.preventDefault();
     const name = username.trim();
     if (name === "" || nameProblem !== undefined || busy) {
-      setError(nameProblem === undefined ? "Pick a username first." : `Username: ${nameProblem}.`);
+      setError(nameProblem === undefined ? t("pickNameFirst") : t("usernameProblem", { problem: nameProblem }));
       return;
     }
     setError(undefined);
@@ -42,7 +74,7 @@ export function RegisterPage({ navigate, afterAuth }: { navigate: Navigate; afte
       await register({ username: name, publicKey: pair.publicKey });
       setKeys({ username: name, ...pair });
     } catch (err) {
-      setError(errorCodeOf(err) === "USERNAME_TAKEN" ? "That name is taken — try another." : errorCopyFor(err));
+      setError(errorCodeOf(err) === "USERNAME_TAKEN" ? t("nameTaken") : errorCopyFor(err));
     } finally {
       setBusy(false);
     }
@@ -64,12 +96,16 @@ export function RegisterPage({ navigate, afterAuth }: { navigate: Navigate; afte
   }
 
   if (keys === undefined) {
+    const ruleClass = (ok: boolean) => `rule${username === "" ? "" : ok ? " ok" : " bad"}`;
+    const ruleMark = (ok: boolean) => (username === "" ? "•" : ok ? "✓" : "✗");
     return (
       <div className="auth-wrap">
+        <SignupSteps current={1} />
         <form className="panel panel-pad stack" onSubmit={(e) => void create(e)}>
-          <h1 className="panel-title">Create your account</h1>
+          <h1 className="panel-title">{t("registerTitle")}</h1>
+          <NextStep icon="✍️" title={t("nameNextTitle")} detail={t("nameNextDetail")} />
           <label className="field">
-            <span>Username</span>
+            <span>{t("usernameLabel")}</span>
             <input
               className={`input${nameProblem !== undefined ? " invalid" : ""}`}
               autoFocus
@@ -77,20 +113,26 @@ export function RegisterPage({ navigate, afterAuth }: { navigate: Navigate; afte
               value={username}
               maxLength={USERNAME_MAX}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. river_rat"
+              placeholder={t("usernamePlaceholder")}
+              aria-describedby="username-rules"
             />
-            <small>{nameProblem ?? `${USERNAME_MIN}–${USERNAME_MAX} letters, digits or underscores.`}</small>
           </label>
-          <p className="faint" style={{ margin: 0 }}>
-            A cryptographic key is generated right here in your browser. It is your password: you'll
-            save it on the next step, and nobody (including us) can recover it.
-          </p>
+          <ul className="rules" id="username-rules">
+            <li className={ruleClass(lengthOk)}><span aria-hidden="true">{ruleMark(lengthOk)}</span>{t("ruleLength", { min: USERNAME_MIN, max: USERNAME_MAX })}</li>
+            <li className={ruleClass(charsOk)}><span aria-hidden="true">{ruleMark(charsOk)}</span>{t("ruleChars")}</li>
+            <li className="rule"><span aria-hidden="true">•</span>{t("ruleUnique")}</li>
+          </ul>
+          <p className="faint" style={{ margin: 0 }}>🔑 {t("keyIntro")}</p>
           {error === undefined ? null : <div className="error-text" role="alert">{error}</div>}
-          <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
-            {busy ? "Creating…" : "Create account"}
+          <button
+            type="submit"
+            className={`btn btn-primary btn-lg btn-block${USERNAME_REGEX.test(username) && !busy ? " attn" : ""}`}
+            disabled={busy}
+          >
+            {busy ? t("creating") : t("createAccount")}
           </button>
           <div className="auth-switch">
-            Already have a key? <button type="button" className="link-btn" onClick={() => navigate("/login")}>Log in</button>
+            {t("haveKey")} <button type="button" className="link-btn" onClick={() => navigate("/login")}>{t("logInLink")}</button>
           </div>
         </form>
       </div>
@@ -99,24 +141,32 @@ export function RegisterPage({ navigate, afterAuth }: { navigate: Navigate; afte
 
   const file = buildKeyFile(keys.username, keys.secretKey, keys.fingerprint);
   const href = `data:text/plain;charset=utf-8,${encodeURIComponent(file)}`;
+  const phase = !saved ? "download" : !acknowledged ? "confirm" : "continue";
+  const next = phase === "download"
+    ? { icon: "⬇", title: t("saveNextDownload"), detail: t("saveNextDownloadDetail") }
+    : phase === "confirm"
+      ? { icon: "☑", title: t("saveNextConfirm"), detail: t("saveNextConfirmDetail") }
+      : { icon: "🎉", title: t("saveNextContinue"), detail: t("saveNextContinueDetail") };
 
   return (
     <div className="auth-wrap">
+      <SignupSteps current={acknowledged ? 3 : 2} />
       <div className="panel panel-pad stack">
-        <h1 className="panel-title">Save your key, {keys.username}</h1>
+        <h1 className="panel-title">{t("saveTitle", { name: keys.username })}</h1>
+        <NextStep icon={next.icon} title={next.title} detail={next.detail} />
         <div className="warning">
           <span aria-hidden="true">⚠️</span>
-          <span>This key is your password. It is shown <b>only once</b>. Lose it and the account is gone for good.</span>
+          <span>{t.rich("warning", { once: <b>{t("warningOnce")}</b> })}</span>
         </div>
-        <div className="key-box" aria-label="Your private key">{keys.secretKey}</div>
+        <div className="key-box" aria-label={t("keyBoxLabel")}>{keys.secretKey}</div>
         <div className="row">
           <a
-            className="btn btn-primary"
+            className={`btn btn-primary${phase === "download" ? " attn" : ""}`}
             href={href}
             download={`nporkerd-key-${keys.username}.txt`}
             onClick={() => setSaved(true)}
           >
-            ⬇ Download key file
+            {t("download")}
           </a>
           <button
             type="button"
@@ -124,24 +174,33 @@ export function RegisterPage({ navigate, afterAuth }: { navigate: Navigate; afte
             onClick={() => {
               navigator.clipboard.writeText(keys.secretKey).then(
                 () => { setCopied(true); setSaved(true); },
-                () => setError("Clipboard is blocked — select the key and copy it manually."),
+                () => setError(t("clipboardBlocked")),
               );
             }}
           >
-            {copied ? "✓ Copied" : "Copy key"}
+            {copied ? t("copied") : t("copy")}
           </button>
         </div>
         <div className="faint">
-          Fingerprint <span className="fingerprint">{keys.fingerprint}</span> — you'll see it again when you log in.
+          {t.rich("fingerprintLine", { fp: <span className="fingerprint">{keys.fingerprint}</span> })}
         </div>
-        <label className="checkbox">
+        <label className={`checkbox ack-box${phase === "confirm" ? " attn" : ""}`}>
           <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
-          <span>I saved my key somewhere safe. I understand it can't be recovered.</span>
+          <span>{t("acknowledge")}</span>
         </label>
         {error === undefined ? null : <div className="error-text" role="alert">{error}</div>}
-        <button type="button" className="btn btn-primary btn-lg btn-block" disabled={!acknowledged || busy} onClick={() => void finish()}>
-          {busy ? "Signing in…" : saved ? "Continue to the lobby" : "Continue"}
+        <button
+          type="button"
+          className={`btn btn-primary btn-lg btn-block${phase === "continue" && !busy ? " attn" : ""}`}
+          disabled={!acknowledged || busy}
+          onClick={() => void finish()}
+        >
+          {busy ? t("signingIn") : saved ? t("continueLobby") : t("continue")}
         </button>
+        <details className="why-key">
+          <summary>{t("whyKeyTitle")}</summary>
+          <p>{t("whyKey")}</p>
+        </details>
       </div>
     </div>
   );

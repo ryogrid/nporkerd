@@ -1,0 +1,43 @@
+// Shell-wide copy: top bar, footer, language switch, guidance chrome.
+import { defineMessages } from "./core";
+
+export const commonMessages = defineMessages(
+  {
+    logIn: "Log in",
+    logOut: "Log out",
+    help: "Help",
+    helpTitle: "How to play — opens in a new tab",
+    bankrollTitle: "Your bankroll (chips you can bring to a table)",
+    languageLabel: "Language",
+    languageTitle: "Switch language / 言語を切り替え",
+    muteSound: "Mute sound",
+    soundOn: "Turn sound on",
+    volume: "Volume",
+    titleDefault: "nporkerd — Texas Hold'em",
+    titleTable: "Table · nporkerd",
+    titleHelp: "Help · nporkerd",
+    nextStep: "What to do now",
+    dismiss: "Got it",
+    learnMore: "How to play",
+    loading: "Loading…",
+  },
+  {
+    logIn: "ログイン",
+    logOut: "ログアウト",
+    help: "ヘルプ",
+    helpTitle: "遊び方（新しいタブで開きます）",
+    bankrollTitle: "あなたの所持チップ（テーブルに持ち込めるチップ）",
+    languageLabel: "言語",
+    languageTitle: "言語を切り替え / Switch language",
+    muteSound: "サウンドをオフ",
+    soundOn: "サウンドをオン",
+    volume: "音量",
+    titleDefault: "nporkerd — テキサスホールデム",
+    titleTable: "テーブル · nporkerd",
+    titleHelp: "ヘルプ · nporkerd",
+    nextStep: "いまやること",
+    dismiss: "わかった",
+    learnMore: "遊び方を見る",
+    loading: "読み込み中…",
+  },
+);

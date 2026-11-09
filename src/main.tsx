@@ -3,6 +3,7 @@ import { ConvexReactClient, ConvexProvider } from "convex/react";
 import { App } from "./App";
 import { SessionProvider } from "./lib/auth";
 import { ToastProvider } from "./lib/toast";
+import { I18nProvider } from "./i18n/core";
 import "./styles.css";
 
 // Production builds get VITE_CONVEX_URL from the static-hosting CLI; in dev
@@ -15,10 +16,12 @@ const mountPoint = document.getElementById("nporkerd-root") ?? document.body;
 
 createRoot(mountPoint).render(
   <ConvexProvider client={convex}>
-    <ToastProvider>
-      <SessionProvider>
-        <App />
-      </SessionProvider>
-    </ToastProvider>
+    <I18nProvider>
+      <ToastProvider>
+        <SessionProvider>
+          <App />
+        </SessionProvider>
+      </ToastProvider>
+    </I18nProvider>
   </ConvexProvider>,
 );

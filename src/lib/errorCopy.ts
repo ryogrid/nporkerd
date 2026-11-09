@@ -1,6 +1,6 @@
 // User-facing copy for every code in design/08 §9 (the server never relies on
 // the client having done this, but every surfaced failure must read like
-// English here). Codes are matched from a ConvexError payload (`error.data`
+// English or Japanese here). Codes are matched from a ConvexError payload (`error.data`
 // = `{ code, data }`) or, as a fallback, from the message text.
 //
 // The table below is typed as a homomorphic copy of the server's own list
@@ -14,6 +14,7 @@ import {
   FAUCET_COOLDOWN_MS,
 } from "../../convex/lib/constants";
 import { errorCodes } from "../../convex/lib/errors";
+import { getLang } from "../i18n/core";
 
 export const ERROR_COPY: { [K in keyof typeof errorCodes]: string } = {
   UNAUTHENTICATED: "Your session is no longer valid — please log in again.",
@@ -43,8 +44,39 @@ export const ERROR_COPY: { [K in keyof typeof errorCodes]: string } = {
   RATE_LIMITED: `You are typing too fast: one message per ${CHAT_MIN_INTERVAL_MS / 1000} seconds.`,
 };
 
-/** The same table, widened for the runtime lookups by code name. */
-const COPY_BY_NAME: Record<string, string> = ERROR_COPY;
+
+const ERROR_COPY_JA: typeof ERROR_COPY = {
+  UNAUTHENTICATED: "セッションが無効になりました。もう一度ログインしてください。",
+  INVALID_USERNAME: "そのユーザー名は使えません。英数字とアンダースコアで3〜20文字にしてください。",
+  INVALID_PUBLIC_KEY: "貼り付けられた鍵は nporkerd の鍵として正しい形式ではありません。",
+  USERNAME_TAKEN: "その名前は既に使われています（大文字・小文字は区別しません）。別の名前を試してください。",
+  INVALID_CREDENTIALS: "ログインに失敗しました。ユーザー名か鍵が違います。アカウントがない場合は新規登録してください。",
+  CHALLENGE_EXPIRED: "ログインの試行が時間切れ（5分）になりました。ログイン画面からやり直してください。",
+  FAUCET_NOT_ELIGIBLE: `チップの補給は所持チップが ${FAUCET_AMOUNT.toLocaleString("en-US")} 未満のプレイヤーだけが受け取れます。`,
+  FAUCET_COOLDOWN: `チップの補給は最近受け取り済みです。${FAUCET_COOLDOWN_MS / 3_600_000} 時間後にもう一度受け取れます。`,
+  INVALID_ROOM_SETTINGS: "テーブルの設定が受け付けられませんでした。各項目の範囲を確認してください。",
+  JOIN_DENIED: "このテーブルに参加できません。閉じられているか、合言葉が違うか、存在しない可能性があります。",
+  NOT_A_MEMBER: "テーブルに参加したプレイヤーだけが、テーブルの状態やチャットを見られます。",
+  SEAT_TAKEN: "その席は埋まっています。別の空席を選んでください。",
+  ALREADY_SEATED: "既にこのテーブルに着席しています。",
+  INSUFFICIENT_BALANCE: "所持チップが足りないため、このテーブルにバイインできません。",
+  ROOM_CLOSED: "このテーブルは閉じられたため、もうプレイできません。",
+  NOT_HOST: "この操作はテーブルのホストだけができます。",
+  GAME_IN_PROGRESS: "ハンドの途中です。ハンドが終わるまでお待ちください。",
+  BETWEEN_HANDS_ONLY: "この操作はハンドとハンドの間にだけできます。",
+  NOT_ENOUGH_PLAYERS: "ゲームを始めるには、チップを持って着席しているプレイヤーが2人以上必要です。",
+  ALREADY_PLAYING: "このテーブルは既にゲーム中です。",
+  NOT_IN_HAND: "いまアクションできるハンドはありません。",
+  NOT_YOUR_TURN: "あなたの番ではありません。",
+  ILLEGAL_ACTION: "そのアクションはできません。",
+  INVALID_MESSAGE: "メッセージは前後の空白を除いて1〜500文字にしてください。",
+  RATE_LIMITED: `送信が速すぎます。メッセージは ${CHAT_MIN_INTERVAL_MS / 1000} 秒に1回までです。`,
+};
+
+/** The table for the current language, widened for lookups by code name. */
+function copyByName(): Record<string, string> {
+  return getLang() === "ja" ? ERROR_COPY_JA : ERROR_COPY;
+}
 
 /** Every code in 08 §9 — used by the error-surface sweep (Phase 8). */
 export function errorCodesHandled(): string[] {
@@ -65,7 +97,7 @@ export function errorCodeOf(error: unknown): string | undefined {
   }
   const message = (error as { message?: unknown }).message;
   if (typeof message === "string") {
-    for (const code in COPY_BY_NAME) {
+    for (const code in ERROR_COPY) {
       if (message.includes(code)) {
         return code;
       }
@@ -76,12 +108,12 @@ export function errorCodeOf(error: unknown): string | undefined {
 
 /** Sentence to show the user for a failed call. */
 export function errorCopyFor(error: unknown): string {
+  const fallback = getLang() === "ja" ? "サーバーがリクエストを受け付けませんでした。" : "The server rejected that request.";
   const code = errorCodeOf(error);
   if (code === undefined) {
-    return "The server rejected that request.";
+    return fallback;
   }
-  const copy = COPY_BY_NAME[code];
-  return copy === undefined ? "The server rejected that request." : copy;
+  return copyByName()[code] ?? fallback;
 }
 
 /** Extra hint for the faucet cooldown (the server returns `nextClaimAt`). */
@@ -99,5 +131,7 @@ export function faucetHint(error: unknown): string | undefined {
     return undefined;
   }
   const minutes = Math.max(0, Math.ceil((at - Date.now()) / 60_000));
-  return `Next faucet claim: about ${minutes} minute(s) away.`;
+  return getLang() === "ja"
+    ? `次に補給を受け取れるのは約 ${minutes} 分後です。`
+    : `Next faucet claim: about ${minutes} minute(s) away.`;
 }

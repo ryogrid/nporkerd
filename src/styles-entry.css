@@ -1,0 +1,132 @@
+/* Loaded before styles.css (imported from page modules), so overrides of
+   shared classes use a compound selector to win on specificity.
+
+   Entry + lobby area: landing "how it works", sign-up steps, login hints,
+   lobby guidance and table cards, host-a-table help lines. Builds on the
+   tokens and classes in styles.css; nothing here overrides the table screen. */
+
+.entry-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.field-help { color: var(--text-faint); font-size: 12px; }
+
+/* ───────────── landing ───────────── */
+.landing.landing-entry { min-height: 0; padding-top: 3vh; }
+.landing-copy { min-width: 0; }
+/* Japanese has no spaces to wrap at: size the two headline lines to fit */
+html:lang(ja) .landing.landing-entry h1 { font-size: clamp(28px, 4.4vw, 56px); line-height: 1.18; }
+.landing-next { margin: -8px 0 20px; max-width: 560px; }
+.landing .landing-next .next-step-detail { font-size: 14px; }
+.landing p.landing-note { margin: 18px 0 0; font-size: 13px; }
+
+.how-it-works { margin-top: 28px; }
+.how-steps {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+}
+.how-step {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 16px; border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+  border: 1px solid var(--line);
+}
+.how-step strong { display: block; font-size: 15px; margin-bottom: 4px; }
+.how-step p { margin: 0; font-size: 14px; color: var(--text-dim); }
+.how-num {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #1b1203;
+  background: radial-gradient(circle at 35% 30%, #ffe8a6, var(--gold) 55%, var(--gold-2));
+}
+.how-help { display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 600; }
+
+/* ───────────── sign-up steps ───────────── */
+.signup-steps {
+  list-style: none; margin: 0 0 14px; padding: 0;
+  display: flex; align-items: center; gap: 6px;
+}
+.signup-step {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: rgba(0,0,0,.25);
+  color: var(--text-faint); font-size: 13px; font-weight: 600;
+}
+.signup-step.current { border-color: rgba(227,185,85,.6); background: var(--gold-soft); color: var(--text); }
+.signup-step.done { color: #7ee2a8; border-color: rgba(47,191,113,.35); }
+.signup-num {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 800;
+  background: rgba(255,255,255,.08);
+}
+.signup-step.current .signup-num { background: var(--gold); color: #1b1203; }
+.signup-step.done .signup-num { background: rgba(47,191,113,.25); }
+.signup-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rules { list-style: none; margin: -4px 0 0; padding: 0; display: grid; gap: 2px; font-size: 13px; color: var(--text-faint); }
+.rule { display: flex; gap: 8px; }
+.rule > span { width: 12px; flex: none; text-align: center; }
+.rule.ok { color: #7ee2a8; }
+.rule.bad { color: #ff9aa1; }
+
+.ack-box { padding: 8px 10px; margin: 0 -10px; border-radius: 10px; }
+.why-key { font-size: 13px; color: var(--text-faint); }
+.why-key summary { cursor: pointer; color: var(--text-dim); font-weight: 600; }
+.why-key p { margin: 6px 0 0; }
+
+/* ───────────── login ───────────── */
+.login-ways { font-size: 13px; color: var(--text-dim); }
+.login-ways ul { margin: 4px 0 0; padding-left: 4px; list-style: none; display: grid; gap: 2px; }
+.lost-key {
+  padding: 10px 12px; border-radius: 10px; font-size: 13px; color: var(--text-dim);
+  background: rgba(255,255,255,.03); border: 1px solid var(--line);
+}
+.lost-key strong { color: var(--text); }
+
+/* ───────────── lobby ───────────── */
+.faucet { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 300px; }
+.faucet small { color: var(--text-faint); font-size: 12px; text-align: right; }
+.room-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.room-legend span:first-child { color: var(--text-dim); font-weight: 600; }
+.room-body { min-width: 0; }
+.room-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.room-count { font-weight: 700; }
+.room-count-unit { font-weight: 500; font-size: 12px; color: var(--text-faint); }
+.room-warn { margin-top: 6px; font-size: 12px; color: #f3c969; }
+.room-card-entry:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.room-card-entry .room-cta { white-space: nowrap; pointer-events: none; }
+.room-card-entry:hover .room-cta,
+.room-card-entry:focus-visible .room-cta {
+  background: linear-gradient(180deg, #ffd97f, #ecc260 45%, #c79634);
+  border-color: #ffe2a0; color: #1b1203;
+}
+.room-card-entry:hover { box-shadow: 0 6px 22px rgba(0,0,0,.35); }
+.btn.lobby-jump { display: none; }
+
+/* ───────────── host a table ───────────── */
+.create-room .field small { line-height: 1.35; }
+.create-intro { margin: 4px 0 0; font-size: 13px; color: var(--text-dim); }
+.create-room .chip-fields .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.create-pair { align-items: start; }
+.stakes-presets { flex-wrap: wrap; }
+
+/* ───────────── responsive ───────────── */
+@media (max-width: 1100px) {
+  .btn.lobby-jump { display: inline-flex; }
+}
+@media (max-width: 820px) {
+  .how-steps { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .how-step { padding: 12px 14px; }
+  .landing.landing-entry { padding-top: 0; }
+  .landing-next { margin: 0 0 16px; }
+  .lobby .lobby-head { flex-wrap: wrap; align-items: flex-start; }
+  .faucet { align-items: flex-start; max-width: none; }
+  .faucet small { text-align: left; }
+}
+@media (max-width: 480px) {
+  .signup-step { padding: 6px 8px; gap: 6px; font-size: 12px; }
+  .signup-label { white-space: normal; line-height: 1.15; }
+  .create-room .create-pair { grid-template-columns: minmax(0, 1fr); }
+  .create-room .chip-fields { grid-template-columns: 1fr 1fr; }
+  .create-room .chip-fields .field > span { white-space: normal; }
+  .room-card-entry .room-meta { gap: 4px 12px; }
+}

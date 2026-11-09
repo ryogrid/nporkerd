@@ -5,8 +5,12 @@
 import { CSSProperties } from "react";
 import { Card } from "./Card";
 import { ChipAmount } from "./Chips";
-import { actionClass, actionLabel, formatChips, stageLabel } from "../lib/format";
+import { actionClass, actionLabel, bestHandOf, formatChips, handName, parseHandLabel, secondsLeft, stageLabel } from "../lib/format";
 import { RoomProfile, TableState } from "../lib/projection";
+import { T, useT } from "../i18n/core";
+import { roomMessages } from "../i18n/room";
+
+type RoomT = T<keyof typeof roomMessages.en>;
 
 type TableSeat = TableState["seats"][number];
 
@@ -17,7 +21,7 @@ export type TableProps = {
   heroSeat: number | undefined;
   heroName: string | undefined;
   now: number;
-  /** Offer empty chairs as "sit here" buttons. */
+  /** Offer empty chairs as "sit here" buttons (only when sitting is possible). */
   onSit?: (seatIndex: number) => void;
   sitBusy?: boolean;
 };
@@ -36,7 +40,22 @@ export function potTotal(table: TableState): number {
   return table.pots.reduce((acc, p) => acc + p.amount, 0) + table.seats.reduce((acc, s) => acc + s.betStreet, 0);
 }
 
+/** Small/big blind seats of the current hand, as the server reports them. */
+function blindSeats(table: TableState | undefined): { sb?: number; bb?: number } {
+  if (table === undefined) return {};
+  return { sb: table.smallBlindSeat, bb: table.bigBlindSeat };
+}
+
+/** "Pair of Kings" from a server label, in the current language. */
+function winnerHand(t: RoomT, label: string | undefined): { text: string; fold: boolean } | undefined {
+  if (label === undefined) return undefined;
+  const parsed = parseHandLabel(label);
+  if (parsed === "fold") return { text: "", fold: true };
+  return { text: parsed === undefined ? label : handName(parsed, t.lang), fold: false };
+}
+
 export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBusy }: TableProps) {
+  const t = useT(roomMessages);
   const total = Math.max(2, room.maxSeats ?? 9);
   const rotation = heroSeat === undefined ? 0 : heroSeat;
   const visualOf = (seatIndex: number) => (seatIndex - rotation + total) % total;
@@ -63,6 +82,8 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
   const pot = table === undefined || stage === "waiting" || stage === "finished" ? 0 : potTotal(table);
   const dealerSeat = table?.dealerSeat;
   const sidePots = table !== undefined && stage !== "waiting" && table.pots.length > 1 ? table.pots : [];
+  const blinds = live ? blindSeats(table) : {};
+  const buyInText = formatChips(room.buyIn ?? 0);
 
   const chairs = [];
   for (let seatIndex = 0; seatIndex < total; seatIndex += 1) {
@@ -75,12 +96,19 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
       chairs.push(
         <div key={`empty-${seatIndex}`} className="seat-anchor" style={anchor}>
           {onSit !== undefined ? (
-            <button type="button" className="empty-seat" disabled={sitBusy === true} onClick={() => onSit(seatIndex)}>
-              <span>SIT HERE<small>{formatChips(room.buyIn ?? 0)}</small></span>
+            <button
+              type="button"
+              className="empty-seat sittable attn"
+              disabled={sitBusy === true}
+              title={t("sitTitle", { amount: buyInText })}
+              aria-label={t("sitAria", { n: seatIndex + 1, amount: buyInText })}
+              onClick={() => onSit(seatIndex)}
+            >
+              <span><span className="sit-plus" aria-hidden="true">＋</span>{t("sitHere")}<small>{buyInText}</small></span>
             </button>
           ) : (
-            <div className="empty-seat" aria-label={`seat ${seatIndex + 1} empty`}>
-              <span style={{ opacity: 0.5 }}>OPEN</span>
+            <div className="empty-seat closed-seat" role="img" aria-label={t("seatEmpty", { n: seatIndex + 1 })}>
+              <span>{t("openSeat")}</span>
             </div>
           )}
         </div>,
@@ -122,11 +150,31 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
     }
 
     let tag = null;
-    if (isWinner) tag = <span className="seat-tag win">Winner</span>;
-    else if (isTurn) tag = <span className="seat-tag acting">{isHero ? "Your turn" : "Acting"}</span>;
-    else if (seat?.allIn === true && stage !== "waiting") tag = <span className="seat-tag allin">All-in</span>;
-    else if (sittingOut) tag = <span className="seat-tag">Sitting out</span>;
-    else if (seat?.folded === true && stage !== "waiting") tag = <span className="seat-tag">Folded</span>;
+    if (isWinner) tag = <span className="seat-tag win">{t("tagWinner")}</span>;
+    else if (isTurn) tag = <span className="seat-tag acting">{isHero ? t("tagYourTurn") : t("tagActing")}</span>;
+    else if (seat?.allIn === true && stage !== "waiting") tag = <span className="seat-tag allin">{t("tagAllIn")}</span>;
+    else if (sittingOut) tag = <span className="seat-tag">{t("tagSittingOut")}</span>;
+    else if (seat?.folded === true && stage !== "waiting") tag = <span className="seat-tag">{t("tagFolded")}</span>;
+
+    let blind = null;
+    if (blinds.sb === seatIndex) {
+      blind = <span className="seat-blind sb" title={t("sbTitle", { amount: formatChips(room.smallBlind ?? 0) })}>SB</span>;
+    } else if (blinds.bb === seatIndex) {
+      blind = <span className="seat-blind bb" title={t("bbTitle", { amount: formatChips(room.bigBlind ?? 0) })}>BB</span>;
+    }
+
+    // the viewer's own best hand (their two cards + the board) while they hold cards
+    let heroHand = null;
+    if (isHero && seat !== undefined && seat.holeCards !== undefined && !seat.folded && stage !== "waiting") {
+      const value = bestHandOf(seat.holeCards, table?.board ?? []);
+      if (value !== undefined) {
+        heroHand = (
+          <div className="seat-hand mine" title={t("yourHandTitle")}>
+            {t("yourHand", { hand: handName(value, t.lang) })}
+          </div>
+        );
+      }
+    }
 
     const pct = isTurn && remaining !== undefined && turnTotalMs > 0 ? Math.min(100, (remaining / turnTotalMs) * 100) : undefined;
     // lastAction survives into the next street; a chip-moving action with no
@@ -142,18 +190,21 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
           {cards}
           <div className="seat-plate">
             {tag}
-            <span className={online ? "seat-online" : "seat-away"} title={online ? "online" : "away"} />
-            <div className="seat-name">{isHero ? `${username} (you)` : username}</div>
-            <div className="seat-stack">{formatChips(stack)}</div>
-            {pct === undefined ? null : (
-              <div className={`seat-timer${pct < 25 ? " low" : ""}`}><i style={{ width: `${pct}%` }} /></div>
+            {blind}
+            <span className={online ? "seat-online" : "seat-away"} title={online ? t("online") : t("offline")} />
+            <div className="seat-name" title={username}>{isHero ? t("you") : username}</div>
+            <div className="seat-stack" title={t("stackSeatTitle", { name: isHero ? t("you") : username, amount: formatChips(stack) })}>{formatChips(stack)}</div>
+            {pct === undefined || remaining === undefined ? null : (
+              <div className={`seat-timer${pct < 25 ? " low" : ""}`} title={t("timerTitle", { n: secondsLeft(deadline ?? now, now) })}><i style={{ width: `${pct}%` }} /></div>
             )}
           </div>
-          {isWinner && winnerLabel.get(username) !== undefined && !/fold/i.test(winnerLabel.get(username) ?? "") ? (
-            <div className="seat-hand">{winnerLabel.get(username)}</div>
+          {isWinner && winnerHand(t, winnerLabel.get(username))?.fold === false ? (
+            <div className="seat-hand">{winnerHand(t, winnerLabel.get(username))?.text}</div>
+          ) : heroHand !== null ? (
+            heroHand
           ) : last !== undefined && live ? (
             <div key={`${handNumber}-${last.kind}-${last.amount ?? 0}`} className={`seat-action ${actionClass(last.kind)}`}>
-              {actionLabel(last.kind, last.amount)}
+              {actionLabel(last.kind, last.amount, t.lang)}
             </div>
           ) : null}
         </div>
@@ -162,7 +213,7 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
 
     if (seat !== undefined && seat.betStreet > 0 && live) {
       chairs.push(
-        <div key={`bet-${seatIndex}`} className="bet-anchor" style={place(visual, total, 30, 25)}>
+        <div key={`bet-${seatIndex}`} className="bet-anchor" style={place(visual, total, 30, 25)} title={t("betSeatTitle", { name: isHero ? t("you") : username, amount: formatChips(seat.betStreet) })}>
           <ChipAmount amount={seat.betStreet} />
         </div>,
       );
@@ -179,7 +230,7 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
     };
     dealer = (
       <div className="bet-anchor dealer" style={style}>
-        <div className="dealer-btn" title="Dealer">D</div>
+        <div className="dealer-btn" title={t("dealerTitle")} aria-label={t("dealerTitle")}>D</div>
       </div>
     );
   }
@@ -206,21 +257,21 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
         <div className="table-felt" />
         <div className="table-center">
           <div className="stage-label">
-            {stageLabel(stage)}
-            {handNumber > 0 && stage !== "waiting" ? ` · Hand #${handNumber}` : ""}
+            {stageLabel(stage, t.lang)}
+            {handNumber > 0 && stage !== "waiting" ? ` · ${t("handNo", { n: handNumber })}` : ""}
           </div>
           {stage === "waiting" ? (
-            <div className="table-message">{waitingMessage(room, table)}</div>
+            <div className="table-message">{waitingMessage(t, room, table)}</div>
           ) : (
             <div className="board">{boardSlots}</div>
           )}
           {pot > 0 ? (
-            <div className="pot"><ChipAmount amount={pot} className="row" /><span className="pot-label">pot</span></div>
+            <div className="pot" title={t("potTitle", { amount: formatChips(pot) })}><ChipAmount amount={pot} className="row" /><span className="pot-label">{t("pot")}</span></div>
           ) : null}
           {sidePots.length > 0 ? (
             <div className="side-pots">
               {sidePots.map((p, i) => (
-                <span key={i} className="badge">{i === 0 ? "Main" : `Side ${i}`} {formatChips(p.amount)}</span>
+                <span key={i} className="badge" title={i === 0 ? undefined : t("sidePotTitle")}>{i === 0 ? t("mainPot") : t("sidePot", { n: i })} {formatChips(p.amount)}</span>
               ))}
             </div>
           ) : null}
@@ -230,17 +281,23 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
         {winners.length > 0 ? (
           <div key={`banner-${handNumber}`} className={`result-banner${heroWon ? " mine" : ""}`}>
             <div className="who">
-              {winners.map((w) => (w.username === heroName ? "You" : w.username)).join(" & ")}
-              {winners.length === 1 && winners[0].username === heroName ? " win" : winners.length > 1 ? " split" : " wins"}
+              {winners.length > 1
+                ? t("split", { names: winners.map((w) => (w.username === heroName ? t("you") : w.username)).join(t("namesJoin")) })
+                : winners[0].username === heroName
+                  ? t("youWin")
+                  : t("winsOne", { name: winners[0].username })}
             </div>
             <div className="what">
-              {winners.map((w, i) => (
-                <span key={i}>
-                  {i > 0 ? " · " : ""}
-                  {formatChips(w.amount)}
-                  {w.handRankLabel === undefined ? "" : /fold/i.test(w.handRankLabel) ? " · everyone folded" : ` with ${w.handRankLabel}`}
-                </span>
-              ))}
+              {winners.map((w, i) => {
+                const amount = formatChips(w.amount);
+                const hand = winnerHand(t, w.handRankLabel);
+                return (
+                  <span key={i}>
+                    {i > 0 ? " · " : ""}
+                    {hand === undefined ? amount : hand.fold ? t("amountFold", { amount }) : t("amountWith", { amount, hand: hand.text })}
+                  </span>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -249,11 +306,12 @@ export function PokerTable({ room, table, heroSeat, heroName, now, onSit, sitBus
   );
 }
 
-function waitingMessage(room: RoomProfile, table: TableState | undefined): string {
+function waitingMessage(t: RoomT, room: RoomProfile, table: TableState | undefined): string {
   const ready = (room.seats ?? []).filter((s) => s.seatIndex >= 0 && s.state === "seated" && s.stack > 0).length;
   const seated = (table?.seats ?? []).length;
-  if (seated === 0) return "Take a seat to play";
-  if (ready < 2) return "Waiting for more players…";
-  if (seated < 2) return seated === 0 ? "Take a seat to play" : "Waiting for another player…";
-  return room.status === "playing" ? "Shuffling up…" : `Waiting for ${room.hostUsername ?? "the host"} to deal`;
+  if (seated === 0) return t("msgTakeSeat");
+  if (ready < 2) return t("msgMorePlayers");
+  if (seated < 2) return t("msgAnother");
+  if (room.status === "playing") return t("shuffling");
+  return room.isHost === true ? t("msgYouDeal") : t("msgWaitHost", { host: room.hostUsername ?? t("theHost") });
 }
