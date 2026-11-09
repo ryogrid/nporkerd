@@ -22,12 +22,16 @@ export const USERNAME_MIN = 3;
 export const USERNAME_MAX = 20;
 export const USERNAME_REGEX = /^[A-Za-z0-9_]{3,20}$/;
 
-// Room settings bounds (design/02 §4).
+// Room settings bounds (design/02 §4, 05 §2).
 export const ROOM_NAME_MAX = 40;
 export const MAX_SEATS_MIN = 2;
 export const MAX_SEATS_MAX = 9;
 export const TURN_SECONDS_MIN = 10;
 export const TURN_SECONDS_MAX = 120; // 0 = clock off
+export const PASSPHRASE_MIN = 4; // 05 §2: private rooms need 4–64 chars
+export const PASSPHRASE_MAX = 64;
+export const BUY_IN_MIN_BIG_BLINDS = 10; // buyIn ≥ bigBlind × 10 (05 §2)
+export const PRESENCE_ONLINE_MS = 45_000; // online iff seen within 45 s (05 §8)
 
 // Chat (design/02 §7, design/06 §3).
 export const CHAT_MAX_LENGTH = 500;
