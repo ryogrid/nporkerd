@@ -31,13 +31,13 @@ L ≈ several days.
 
 ## Phase 2 — Authentication (`03`, `08 §1–2`)
 
-- [ ] `auth.register`: username format validation, public-key length check, uniqueness via `by_usernameLower`, insert with `STARTING_BALANCE`. (S)
-- [ ] `auth.requestLoginChallenge`: mint/replace challenge, 5-min TTL, anti-enumeration behaviour (`03 §4.3`), 5-second re-issue rule. (S)
-- [ ] `auth.login`: verify signature over `nporkerd-login:<challengeId>:<nonce>`, attempts counter (invalidate at 5), single-use delete, create session storing only `SHA-256(token)`. (M)
-- [ ] `auth.logout`, `auth.me`. (S)
-- [ ] `users.heartbeat`, `users.claimFaucet` (rule from `02 §8`, errors `FAUCET_NOT_ELIGIBLE` / `FAUCET_COOLDOWN`). (S)
-- [ ] Backend tests (convex-test or handler-level): duplicate username rejected; login with wrong key fails generically; expired challenge fails; session token hash at rest (assert the raw token string appears in no stored document). (M)
-- Acceptance: register → challenge → login round-trip works from a test script against the dev deployment; a signature over a tampered message is rejected.
+- [x] `auth.register`: username format validation, public-key length check, uniqueness via `by_usernameLower`, insert with `STARTING_BALANCE`. (S) — done; errors `INVALID_USERNAME` / `INVALID_PUBLIC_KEY` / `USERNAME_TAKEN` per 08 §1.
+- [x] `auth.requestLoginChallenge`: mint/replace challenge, 5-min TTL, anti-enumeration behaviour (`03 §4.3`), 5-second re-issue rule. (S) — done; unknown usernames get a "phantom" challenge bound to no user (indistinguishable shape); re-issue <5 s returns the SAME challenge; a fresh request past the window deletes the unconsumed predecessor.
+- [x] `auth.login`: verify signature over `nporkerd-login:<challengeId>:<nonce>`, attempts counter (invalidate at 5), single-use delete, create session storing only `SHA-256(token)`. (M) — done. Platform-semantics deviation (recorded): a Convex mutation that THROWS rolls back its DB effects, but `03 §4.3` requires the attempt-counter bump to persist — so `login` RETURNS a tagged result `{ ok, code?, sessionToken?, user? }` on rejection instead of throwing; the shared client helper `convex/lib/auth.ts loginWithKeypair` turns the tag back into a thrown `ConvexError({code})`, so clients still observe `INVALID_CREDENTIALS` / `CHALLENGE_EXPIRED` exactly as 08 §1/§9 specify. Also this world's convextest harness does not make `api.*` references directly callable, so tests pass an invoker closure `(args) => t.mutation(api.auth.login, args)` into the helper (SPA will wrap its client call the same way).
+- [x] `auth.logout`, `auth.me`. (S) — done; `me` returns `publicKeyFingerprint` = first 10 hex of SHA-256(publicKey) (03 §6).
+- [x] `users.heartbeat`, `users.claimFaucet` (rule from `02 §8`, errors `FAUCET_NOT_ELIGIBLE` / `FAUCET_COOLDOWN`). (S) — done; heartbeat updates `users.lastSeenAt` and, when `roomId` given, the caller's seat presence, returns `{ ok: true }` (08 §2). claimFaucet checks the COOLDOWN first so the common "just claimed" case gets the retry hint `data.nextClaimAt = lastFaucetAt + FAUCET_COOLDOWN_MS`; `FAUCET_NOT_ELIGIBLE` covers permanently-rich users; returns `{ balance }`.
+- [x] Backend tests (convex-test or handler-level): duplicate username rejected; login with wrong key fails generically; expired challenge fails; session token hash at rest (assert the raw token string appears in no stored document). (M) — done in `convex/auth.test.ts`: 13 tests, incl. 5-attempt invalidation persisting between attempts, phantom behaviour identical, `nextClaimAt` payload asserted exactly, raw token absent from stored session (only `tokenHash`), rollback semantics of rejected claims verified.
+- Acceptance: register → challenge → login round-trip works from a test script against the dev deployment; a signature over a tampered message is rejected. → Adapted (no-deploy constraint): full register → challenge → login → `me` → logout round-trip passes in-process against the real schema via convex-test (`npm test` 44/44); wrong-key/tampered signatures rejected generically.
 
 ## Phase 3 — Rooms and lobby (`05`, `08 §3`)
 
