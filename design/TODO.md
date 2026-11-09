@@ -235,11 +235,65 @@ Deviations & decisions (Phase 4):
 
 ## Phase 8 — Hardening and game-feel QA
 
-- [ ] Playtest matrix: heads-up game, 3-player with an all-in side pot, a player disconnecting mid-hand (close the tab; verify timeout flow), a full-timeout player being auto-sat-out next hand, host leaving a waiting room (migration), private room join by link + passphrase. (M)
-- [ ] Error-surface sweep: every error code in `08 §9` has user-facing copy in the client. (S)
-- [ ] Re-check the security review items from Phase 5 against the final code (projection shape test still green after refactors). (S)
-- [ ] Load sanity: one table, 9 clients, a full hand — no visible lag; note function-call volume from the dashboard for the `09 §7` quota picture. (S)
-- Acceptance: playtest matrix signed off; no known way for a client to learn unrevealed cards (tested, not assumed).
+- [x] Playtest matrix — every row is pinned to the convextest that reproduces it
+  against the real schema/functions, plus the SPA call sequence that drives it.
+  Opening two browser profiles needs `convex dev`, which stays out of scope, so the
+  browser walk-through is recorded here as the exact path the pages take instead of
+  being claimed as done.
+
+  | row | server-side truth (test) | client path |
+  | --- | --- | --- |
+  | heads-up game | `game.test.ts` "scripted heads-up hand runs preflop to showdown through public mutations only", "the game continues 5 s after a hand finishes"; `game/engine.test.ts` "heads-up: the button posts the small blind and acts first preflop" | `LobbyPage` → `CreateRoomDialog` (2 seats) → `RoomPage` join → `sitDown(0/1)` → `startGame` → `ActionBar` → next hand 5 s later |
+  | 3 players, all-in side pot | `game/pots.test.ts` "three-way all-in at different stack sizes makes three bands", "the short all-in loser forfeits only its own band", "two winners split each band they both covered", "the whole pot is conserved among the shares"; `game/engine.test.ts` "three players: blinds posted…", "blinds all-in preflop run out the board one street at a time" | `RoomPage` with three members, `allIn` button, `PokerTable` renders `pots[]` as main pot + labelled side pots |
+  | player disconnects mid-hand (tab closed, no more writes) | `game.test.ts` "a withheld clock folds a facing bet, tallies the timeout and auto-sits out" — nothing client-side is required: the scheduled `handleTurnTimeout` fires on its own | the tab simply stops sending: the projection's `turnDeadline` countdown expires, `lastHandResult`/`timeoutStats` follow; presence dot flips to "away" past `PRESENCE_ONLINE_MS` (45 s) and the hourly sweep stands idle seats up |
+  | full-timeout player auto-sat-out next hand | same test (`autoSitOut` tallies then `startNextHand` skips them) | `RoomPage` shows "sitting out"; `toggleSitOut` lets them come back between hands |
+  | host leaves a waiting room (migration) | `rooms.test.ts` "host migration and auto-close on last member" | `leaveRoom` from the host; `RoomProfile.isHost` moves to another viewer, whose host buttons light up |
+  | private room joined by link + passphrase | `rooms.test.ts` "joinRoom: wrong passphrase ≡ closed ≡ missing room (no oracle)", "getRoom: closed / private-non-member stub / member full" | `RoomPage` passphrase field → `joinRoom({passphrase})` → seat selection → `sitDown` |
+- [x] Error-surface sweep: `src/lib/errorCopy.ts` types `ERROR_COPY` as a
+  **homomorphic copy of the server's own list** (`{ [K in keyof typeof errorCodes]:
+  string }`, 25 codes), so the typechecker proves both directions: a server code
+  without copy is a compile error, and copy for a code the server cannot produce is
+  too. Negative control verified while writing it: a table missing a code and a table
+  with an invented code each failed `tsc` as expected.
+- [x] Security review from Phase 5 re-checked against the final code —
+  `convex/security.test.ts` (4 cases, all green):
+  - every projection obtainable by the browser (waiting, preflop, mid-hand, finished,
+    plus `getRoom`/`listPublicRooms`/`listMessages`) contains no hands-document-only
+    key (`deck`, `stackStart`, `betTotal`, `hasActed`, `eligibleUserIds`, `turnSeq`,
+    `startedAt`, `minRaise`, `currentBet`), and `pots` stays amounts-only;
+  - a three-handed hand in which one player folds on the flop: the server dealt
+    **six** hole cards, the viewer is handed **four** (own pair + the contested peer's),
+    the folded player's seat carries no `holeCards` key at all, and the visible set is
+    5 board + 2 + 2, all distinct and in 0..51 — so unrevealed cards are *tested*
+    unreachable, per 10's acceptance line;
+  - non-members get `NOT_A_MEMBER` from both the table and the chat, while still seeing
+    the room in the public lobby; a closed room gives `ROOM_CLOSED` to both.
+  - the only projection change since Phase 5 (`nextHandAt`) was reviewed here: it is a
+    server timestamp (`finishedAt + NEXT_HAND_DELAY_MS`), asserted equal to the
+    hands-document truth.
+- [x] Load sanity, by static count rather than the dashboard (no deployment here). Per
+  seat-per-hand: 1 `act` mutation per action (≈ 18–25 for a 6-max street-complete hand)
+  + 1 `startHandInternal` + up to 3 `advanceStreet` (all-in runouts only) + 1
+  `startNextHand`. Client side per viewer: three reactive queries (`getTableState`,
+  `getRoom`, `listMessages`), re-evaluated when a dependency changes, plus one
+  `users.heartbeat` per 30 s. Order of magnitude for one 9-seat table in one hand:
+  ≈ 25 mutations + ≈ 27 query re-executions per state change ⇒ a few hundred function
+  calls per hand, i.e. well inside 09 §7's "handful of simultaneous tables among
+  friends"; the crons add 1 `cleanupExpired` action per hour (each running
+  `sweepForCleanup` + `purgeEphemeral` + `closeStaleRoom` + `standUpIdleSeats`). The
+  dashboard's Usage page remains the place to read the real numbers — 09 §7 puts the
+  first remedy on the plan, then the chattiest query (`getTableState`), and the
+  projection is already per-viewer, one per client.
+- [ ] Acceptance: playtest matrix signed off in two real browser profiles, and
+  "no known way for a client to learn unrevealed cards" *observed* in devtools. The
+  tested half is green above; the observed half needs the dev deployment (see Phase 9).
+
+### Deviations (Phase 8)
+- No browser profile, no dev deployment: the matrix is pinned to tests plus the exact
+  SPA call path, and the load figures are static counts rather than dashboard readings.
+- The error sweep is a compile-time proof (mapped type over the server's `errorCodes`)
+  instead of a runtime test, because `src/` is outside the convex test project; the
+  client still keeps `errorCodesHandled()` for the runtime fallback path.
 
 ## Phase 9 — Production deployment (`09`)
 

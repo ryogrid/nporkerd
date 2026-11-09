@@ -2,14 +2,20 @@
 // the client having done this, but every surfaced failure must read like
 // English here). Codes are matched from a ConvexError payload (`error.data`
 // = `{ code, data }`) or, as a fallback, from the message text.
+//
+// The table below is typed as a homomorphic copy of the server's own list
+// (`convex/lib/errors.ts`), so the typechecker *is* the Phase 8 error-surface
+// sweep: a code the server can produce without copy is a compile error, and so
+// is copy for a code the server can never produce.
 
 import {
   CHAT_MIN_INTERVAL_MS,
   FAUCET_AMOUNT,
   FAUCET_COOLDOWN_MS,
 } from "../../convex/lib/constants";
+import { errorCodes } from "../../convex/lib/errors";
 
-export const ERROR_COPY: Record<string, string> = {
+export const ERROR_COPY: { [K in keyof typeof errorCodes]: string } = {
   UNAUTHENTICATED: "Your session is no longer valid — please log in again.",
   INVALID_USERNAME: "That username is not allowed: 3–20 characters, letters, digits and underscore only.",
   INVALID_PUBLIC_KEY: "The key you pasted is not a well-formed nporkerd key.",
@@ -19,8 +25,8 @@ export const ERROR_COPY: Record<string, string> = {
   FAUCET_NOT_ELIGIBLE: `The faucet is only for players under ${FAUCET_AMOUNT.toLocaleString("en-US")} chips.`,
   FAUCET_COOLDOWN: `You already claimed the faucet recently: wait ${FAUCET_COOLDOWN_MS / 3_600_000} hours before claiming again.`,
   INVALID_ROOM_SETTINGS: "The room settings were rejected — check the table limits.",
-  JOIN_DENIED: "You cannot join this room: it may be closed, or the passphrase is wrong.",
-  NOT_A_MEMBER: "Chat belongs to the table: only players who joined this room can read or write it.",
+  JOIN_DENIED: "You cannot join this room: it may be closed, the passphrase may be wrong, or it may not exist.",
+  NOT_A_MEMBER: "This belongs to the table: only players who joined can see the table state or use its chat.",
   SEAT_TAKEN: "That seat is already occupied — pick another empty seat.",
   ALREADY_SEATED: "You are already sitting at this table.",
   INSUFFICIENT_BALANCE: "You do not have enough chips in your bankroll to buy in here.",
@@ -37,9 +43,12 @@ export const ERROR_COPY: Record<string, string> = {
   RATE_LIMITED: `You are typing too fast: one message per ${CHAT_MIN_INTERVAL_MS / 1000} seconds.`,
 };
 
+/** The same table, widened for the runtime lookups by code name. */
+const COPY_BY_NAME: Record<string, string> = ERROR_COPY;
+
 /** Every code in 08 §9 — used by the error-surface sweep (Phase 8). */
 export function errorCodesHandled(): string[] {
-  return Object.keys(ERROR_COPY);
+  return Object.keys(errorCodes);
 }
 
 export function errorCodeOf(error: unknown): string | undefined {
@@ -56,7 +65,7 @@ export function errorCodeOf(error: unknown): string | undefined {
   }
   const message = (error as { message?: unknown }).message;
   if (typeof message === "string") {
-    for (const code in ERROR_COPY) {
+    for (const code in COPY_BY_NAME) {
       if (message.includes(code)) {
         return code;
       }
@@ -71,7 +80,8 @@ export function errorCopyFor(error: unknown): string {
   if (code === undefined) {
     return "The server rejected that request.";
   }
-  return ERROR_COPY[code];
+  const copy = COPY_BY_NAME[code];
+  return copy === undefined ? "The server rejected that request." : copy;
 }
 
 /** Extra hint for the faucet cooldown (the server returns `nextClaimAt`). */
