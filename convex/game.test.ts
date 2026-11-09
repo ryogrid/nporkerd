@@ -30,12 +30,14 @@ function errorCodeOf(e: unknown): string {
 }
 
 async function expectError(fn: () => Promise<unknown>, code: string) {
+  let threw = false;
   try {
     await fn();
-    expect(code).toBe("did not throw");
   } catch (e) {
+    threw = true;
     expect(errorCodeOf(e)).toContain(code);
   }
+  expect(threw, "expected the call to throw").toBe(true);
 }
 
 describe("game", () => {
@@ -135,8 +137,11 @@ describe("game", () => {
     // credited the whole pot into their seat stack
     const stacks = await seatStacks(table.roomId);
     expect(stacks.reduce((acc, n) => acc + n, 0)).toBe(2000);
-    expect(stacks).not.toEqual([1000, 1000]);
     const winners = view.lastHandResult!.winners;
+    // random deal: a chopped pot (both win 20) legitimately leaves 1000/1000
+    if (winners.length === 1) {
+      expect(stacks).not.toEqual([1000, 1000]);
+    }
     expect(winners.length >= 1).toBe(true);
     const total = winners.reduce((acc, w) => acc + w.amount, 0);
     expect(total).toBe(40);
@@ -370,5 +375,150 @@ describe("game", () => {
       return sessions.length + challenges.length;
     });
     expect(expiredLeft).toBe(0);
+  });
+  // ------------------------------------------------------- audit regressions
+
+  async function threeSeats(tag: string, turnSeconds: number) {
+    const ids = [];
+    for (const n of ["a", "b", "c"]) {
+      ids.push(await seedUser(`${n.toUpperCase()}${tag}`, 5000, `tok_${n}_${tag}`));
+    }
+    const room = await t.mutation(api.rooms.createRoom, { sessionToken: `tok_a_${tag}`, name: `Room ${tag}`, turnSeconds });
+    for (const [i, n] of ["a", "b", "c"].entries()) {
+      await t.mutation(api.rooms.sitDown, { sessionToken: `tok_${n}_${tag}`, roomId: room.roomId, seatIndex: i });
+    }
+    return { ids, roomId: room.roomId };
+  }
+
+  it("a previous hand's showdown never reveals the NEXT hand's hole cards (00 §5)", async () => {
+    const table = await twoSeats("leak", 0);
+    vi.useFakeTimers();
+    await t.mutation(api.game.startGame, { sessionToken: "tok_a_leak", roomId: table.roomId });
+    await t.mutation(api.game.act, { sessionToken: "tok_a_leak", roomId: table.roomId, kind: "call" });
+    await t.mutation(api.game.act, { sessionToken: "tok_b_leak", roomId: table.roomId, kind: "check" });
+    for (const token of ["tok_b_leak", "tok_a_leak", "tok_b_leak", "tok_a_leak", "tok_b_leak", "tok_a_leak"]) {
+      await t.mutation(api.game.act, { sessionToken: token, roomId: table.roomId, kind: "check" });
+    }
+    vi.advanceTimersByTime(NEXT_HAND_DELAY_MS);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
+    const view = await t.query(api.game.getTableState, { sessionToken: "tok_b_leak", roomId: table.roomId });
+    expect(view.handNumber).toBe(2);
+    expect(view.stage).toBe("preflop");
+    const opponent = view.seats.find((s) => s.userId === table.a)!;
+    expect(opponent.holeCards).toBe(undefined);
+    // the previous result is still offered, tagged with its hand number
+    expect(view.lastHandResult!.handNumber).toBe(1);
+  });
+
+  it("standing up while it is someone else's turn keeps the turn (and clock) with that player", async () => {
+    const table = await threeSeats("standturn", 30);
+    await t.mutation(api.game.startGame, { sessionToken: "tok_a_standturn", roomId: table.roomId });
+    let view = await t.query(api.game.getTableState, { sessionToken: "tok_a_standturn", roomId: table.roomId });
+    // button seat 0, SB 1, BB 2 → seat 0 acts first
+    expect(view.currentTurnSeat).toBe(0);
+    const deadline = view.turnDeadline;
+    await t.mutation(api.rooms.standUp, { sessionToken: "tok_b_standturn", roomId: table.roomId });
+    view = await t.query(api.game.getTableState, { sessionToken: "tok_a_standturn", roomId: table.roomId });
+    expect(view.currentTurnSeat).toBe(0);
+    expect(view.yourTurn).toBe(true);
+    expect(view.turnDeadline).toBe(deadline);
+  });
+
+  it("re-sitting during the hand you stood up from keeps the new buy-in (no chip loss)", async () => {
+    const table = await threeSeats("resit", 0);
+    await t.mutation(api.game.startGame, { sessionToken: "tok_a_resit", roomId: table.roomId });
+    await t.mutation(api.rooms.standUp, { sessionToken: "tok_b_resit", roomId: table.roomId }); // SB, 990 back
+    await t.mutation(api.rooms.sitDown, { sessionToken: "tok_b_resit", roomId: table.roomId, seatIndex: 5 });
+    await t.mutation(api.game.act, { sessionToken: "tok_a_resit", roomId: table.roomId, kind: "call" });
+    const seatB = await t.run(async (ctx) => {
+      const ms = await ctx.db.query("seats").withIndex("by_room", (q) => q.eq("roomId", table.roomId)).collect();
+      return ms.find((s) => s.userId === table.ids[1])!;
+    });
+    expect(seatB.stack).toBe(1000);
+    // b: 5000 − 1000 + 990 − 1000
+    expect(await userBalance(table.ids[1])).toBe(3990);
+  });
+
+  it("pots hold completed streets only; totalPot is every committed chip", async () => {
+    const table = await twoSeats("pots", 0);
+    await t.mutation(api.game.startGame, { sessionToken: "tok_a_pots", roomId: table.roomId });
+    let view = await t.query(api.game.getTableState, { sessionToken: "tok_a_pots", roomId: table.roomId });
+    expect(view.pots).toEqual([]);
+    expect(view.totalPot).toBe(30);
+    await t.mutation(api.game.act, { sessionToken: "tok_a_pots", roomId: table.roomId, kind: "call" });
+    await t.mutation(api.game.act, { sessionToken: "tok_b_pots", roomId: table.roomId, kind: "check" });
+    await t.mutation(api.game.act, { sessionToken: "tok_b_pots", roomId: table.roomId, kind: "raiseTo", amount: 20 });
+    view = await t.query(api.game.getTableState, { sessionToken: "tok_a_pots", roomId: table.roomId });
+    expect(view.pots).toEqual([{ amount: 40 }]);
+    expect(view.totalPot).toBe(60);
+  });
+  it("endGame mid-hand lets the hand finish, then the room stops (no next hand)", async () => {
+    const table = await twoSeats("stop", 0);
+    vi.useFakeTimers();
+    await t.mutation(api.game.startGame, { sessionToken: "tok_a_stop", roomId: table.roomId });
+    const ended = await t.mutation(api.rooms.endGame, { sessionToken: "tok_a_stop", roomId: table.roomId });
+    expect(ended.ok).toBe(true);
+    // the hand is still live and playable
+    await t.mutation(api.game.act, { sessionToken: "tok_a_stop", roomId: table.roomId, kind: "fold" });
+    const view = await t.query(api.game.getTableState, { sessionToken: "tok_a_stop", roomId: table.roomId });
+    expect(view.stage).toBe("finished");
+    expect(view.nextHandAt).toBe(undefined); // no countdown: this was the last hand
+    vi.advanceTimersByTime(NEXT_HAND_DELAY_MS);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
+    const room = await t.run(async (ctx) => await ctx.db.get("rooms", table.roomId));
+    expect(room!.status).toBe("waiting");
+    expect(room!.stopAfterHand).toBe(undefined);
+    expect(room!.autoResume).toBe(undefined);
+    expect((await handDoc(table.roomId))!.handNumber).toBe(1);
+    // and the host can start again
+    const again = await t.mutation(api.game.startGame, { sessionToken: "tok_a_stop", roomId: table.roomId });
+    expect(again.handNumber).toBe(2);
+  });
+
+  it("a room short of players restarts by itself once a seat qualifies again", async () => {
+    const table = await twoSeats("resume", 10);
+    vi.useFakeTimers();
+    await t.mutation(api.game.startGame, { sessionToken: "tok_a_resume", roomId: table.roomId });
+    // A (button/SB) times out → auto-sat-out → room drops to waiting
+    vi.advanceTimersByTime(10_500);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    let room = await t.run(async (ctx) => await ctx.db.get("rooms", table.roomId));
+    expect(room!.status).toBe("waiting");
+    expect(room!.autoResume).toBe(true);
+    // coming back schedules the restart (once, even if triggered twice)
+    await t.mutation(api.rooms.toggleSitOut, { sessionToken: "tok_a_resume", roomId: table.roomId, sittingOut: false });
+    await t.mutation(api.rooms.toggleSitOut, { sessionToken: "tok_a_resume", roomId: table.roomId, sittingOut: false });
+    const view = await t.query(api.game.getTableState, { sessionToken: "tok_a_resume", roomId: table.roomId });
+    expect(view.stage).toBe("waiting");
+    expect(typeof view.nextHandAt).toBe("number");
+    vi.advanceTimersByTime(NEXT_HAND_DELAY_MS + 100);
+    await t.finishInProgressScheduledFunctions();
+    vi.useRealTimers();
+    room = await t.run(async (ctx) => await ctx.db.get("rooms", table.roomId));
+    expect(room!.status).toBe("playing");
+    expect(room!.autoResume).toBe(undefined);
+    expect((await handDoc(table.roomId))!.handNumber).toBe(2);
+  });
+
+  it("a host start during a pending auto-restart wins; the restart then no-ops", async () => {
+    const table = await twoSeats("race", 10);
+    vi.useFakeTimers();
+    await t.mutation(api.game.startGame, { sessionToken: "tok_a_race", roomId: table.roomId });
+    vi.advanceTimersByTime(10_500);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await t.mutation(api.rooms.toggleSitOut, { sessionToken: "tok_a_race", roomId: table.roomId, sittingOut: false });
+    const started = await t.mutation(api.game.startGame, { sessionToken: "tok_a_race", roomId: table.roomId });
+    expect(started.handNumber).toBe(2);
+    const resumed = await t.run(async (ctx) => {
+      const r = await ctx.db.get("rooms", table.roomId);
+      return r!.resumeAt;
+    });
+    expect(resumed ?? undefined).toBe(undefined);
+    vi.advanceTimersByTime(NEXT_HAND_DELAY_MS + 100);
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
+    vi.useRealTimers();
+    expect((await handDoc(table.roomId))!.handNumber).toBe(2);
   });
 });

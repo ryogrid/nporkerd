@@ -348,3 +348,37 @@ Deviations & decisions (Phase 4):
 - [ ] Moderation basics: host kick (remove a member from the room).
 - [ ] Move passphrase hashing to iterated SHA-256 (D-09 option B) if probing is observed.
 - [ ] Data retention job (D-07 option B) if table growth matters.
+
+### Notes (backend gameplay audit)
+- Fixed: side pots went back to their contributors whenever the overall best hand was a
+  short all-in (now each band goes to the best eligible hand, 04 §7.3); a refunded
+  uncalled excess is no longer listed in `result.winners`, and each winner carries their
+  own `handRankLabel`.
+- Fixed: a lone `active` player opposite all-ins was asked to check every later street
+  (04 §8 "≤ 1 active ⇒ runout"); heads-up button all-in from the SB no longer gets the
+  turn; a BB all-in for less than the SB no longer yields a negative `toCall`.
+- Fixed: `getTableState` revealed hand N+1 hole cards of players shown down in hand N
+  (reveals are now taken only from the projected hand itself).
+- Fixed: a mid-hand stand-up by a non-acting player passed the turn past the current
+  actor (and reset their clock); seat stacks are now synced as deltas, so standing up
+  and re-sitting during the same hand no longer overwrites the new buy-in.
+- Deviation (08 §4): projected `pots` now hold completed streets only, merged by
+  eligibility (real side pots only); current-street chips stay in `seats[].betStreet`.
+  New `totalPot` = all chips committed to the hand; `lastHandResult.handNumber` added.
+- Deviation (05 §4–§5, owner OK'd relaxing the docs): `endGame` during a live hand sets
+  `rooms.stopAfterHand`; the hand plays out and `startNextHand` returns the room to
+  `waiting` (no `nextHandAt` countdown). `getRoom.stopAfterHand` exposes it; `startGame`
+  and an end between hands clear it. `closeRoom` still refuses live hands.
+- Deviation: `topUp` is allowed mid-hand for a seated player who was not dealt into the
+  live hand (e.g. busted); dealt-in players still get `BETWEEN_HANDS_ONLY`.
+- New: a room that fell to `waiting` only for lack of qualifying seats gets
+  `autoResume`; `sitDown` / `toggleSitOut(false)` / `topUp` that bring it back to ≥ 2
+  schedule `game.resumeGame` after NEXT_HAND_DELAY_MS (`resumeAt` is the single-pending
+  guard token; `getTableState.nextHandAt` shows it). Host `startGame` / `endGame`
+  cancel it.
+- Test harness fix: every `expectError` helper caught its own "did not throw"
+  assertion (the AssertionError text contains the expected code), so a call that did
+  NOT throw passed silently. Now a `threw` flag is asserted after the try/catch.
+- Not done: heartbeat throttling — with a 30 s beat any ≥ 20 s threshold still writes
+  every beat, so it would not reduce re-renders; the seat-copy write is asserted by
+  auth.test and left as is.

@@ -221,12 +221,14 @@ function stateFields(state: HandState, now: number): HandsFields {
   const outcome = state.result;
   if (outcome) {
     fields.result = {
-      winners: outcome.shares
-        .filter((s) => s.chips > 0)
-        .map((s) => ({
-          userId: asUserId(s.userId),
-          amount: s.chips,
-          handRankLabel: outcome.handRankLabel,
+      // Actual winners only (each with their own hand label); an uncalled
+      // bet handed back to a showdown loser is credited but not a "win".
+      winners: outcome.winners
+        .filter((w) => w.chips > 0)
+        .map((w) => ({
+          userId: asUserId(w.userId),
+          amount: w.chips,
+          handRankLabel: w.label,
         })),
       revealedUserIds: outcome.revealedUserIds.map(asUserId),
     };
@@ -236,12 +238,19 @@ function stateFields(state: HandState, now: number): HandsFields {
 
 // ------------------------------------------------------------------ shared writes
 
-/** Seat stack mirrors `players[].stack` (+ shares at hand end) (04 §7 crediting). */
+/**
+ * Seat stack follows `players[].stack` (+ shares at hand end) (04 §7
+ * crediting). Applied as a DELTA against the hand player's stack before this
+ * write (`before`), never as an absolute copy: a player who stood up mid-hand
+ * was cashed out (seat stack 0) and may even have re-bought into a seat while
+ * this hand still runs — an absolute copy would resurrect or wipe chips.
+ */
 async function syncSeatStacks(
   ctx: MutationCtx,
   roomId: Id<"rooms">,
   state: HandState,
   now: number,
+  before: Record<string, number>,
 ): Promise<void> {
   const shares: Record<string, number> = {};
   const outcome = state.result;
@@ -256,12 +265,12 @@ async function syncSeatStacks(
     .collect();
   for (const seat of seats) {
     const p = state.players.find((x) => x.userId === seat.userId);
-    if (!p || p.seatIndex < 0) {
+    if (!p || p.seatIndex < 0 || before[p.userId] === undefined) {
       continue;
     }
-    const stack = p.stack + (shares[p.userId] ?? 0);
-    if (stack !== seat.stack) {
-      await ctx.db.patch("seats", seat._id, { stack, lastSeenAt: now });
+    const delta = p.stack + (shares[p.userId] ?? 0) - before[p.userId];
+    if (delta !== 0) {
+      await ctx.db.patch("seats", seat._id, { stack: seat.stack + delta, lastSeenAt: now });
     }
   }
 }
@@ -276,8 +285,14 @@ async function persistAndSchedule(
   state: HandState,
   now: number,
   timeoutStats: TimeoutStat[],
+  /** Keep this turn deadline (same actor still to act, e.g. someone else folded by standing up). */
+  keepDeadline?: number,
 ): Promise<number> {
   const room = await ctx.db.get("rooms", hand.roomId);
+  const before: Record<string, number> = {};
+  for (const p of hand.players) {
+    before[p.userId] = p.stackStart - p.betTotal;
+  }
   const turnSeq = hand.turnSeq + 1;
   const fields = stateFields(state, now);
   const patch: HandsWrite = {
@@ -289,13 +304,15 @@ async function persistAndSchedule(
     patch.finishedAt = now;
     patch.turnDeadline = undefined;
   } else if (state.turnSeat >= 0 && room !== null && room.turnSeconds > 0) {
-    patch.turnDeadline = now + room.turnSeconds * 1000;
+    patch.turnDeadline = keepDeadline !== undefined && keepDeadline > now
+      ? keepDeadline
+      : now + room.turnSeconds * 1000;
   } else {
     patch.turnDeadline = undefined;
   }
   await ctx.db.patch("hands", hand._id, patch);
-  await syncSeatStacks(ctx, hand.roomId, state, now);
-  await scheduleFromState(ctx, hand.roomId, hand._id, state, now, turnSeq, room);
+  await syncSeatStacks(ctx, hand.roomId, state, now, before);
+  await scheduleFromState(ctx, hand.roomId, hand._id, state, now, turnSeq, room, patch.turnDeadline);
   return turnSeq;
 }
 
@@ -308,6 +325,7 @@ async function scheduleFromState(
   now: number,
   turnSeq: number,
   room: Doc<"rooms"> | null,
+  turnDeadline?: number,
 ): Promise<void> {
   if (room !== null) {
     // every state change counts as activity (02 §4 `lastActivityAt`)
@@ -324,7 +342,7 @@ async function scheduleFromState(
   if (state.turnSeat >= 0) {
     if (room !== null && room.turnSeconds > 0) {
       await ctx.scheduler.runAfter(
-        room.turnSeconds * 1000,
+        turnDeadline !== undefined ? Math.max(0, turnDeadline - now) : room.turnSeconds * 1000,
         internal.game.handleTurnTimeout,
         { handId, turnSeq },
       );
@@ -416,7 +434,11 @@ async function beginHand(
     timeoutStats: [] as TimeoutStat[],
   });
   await ctx.db.patch("rooms", roomId, { currentHandId: handId, lastActivityAt: now });
-  await syncSeatStacks(ctx, roomId, state, now);
+  const before: Record<string, number> = {};
+  for (const p of state.players) {
+    before[p.userId] = p.stackStart;
+  }
+  await syncSeatStacks(ctx, roomId, state, now, before);
   await scheduleFromState(ctx, roomId, handId, state, now, 0, room);
   return handId;
 }
@@ -448,7 +470,13 @@ export const startGame = mutation({
       fail(NOT_ENOUGH_PLAYERS);
     }
     const now = Date.now();
-    await ctx.db.patch("rooms", args.roomId, { status: "playing", lastActivityAt: now });
+    await ctx.db.patch("rooms", args.roomId, {
+      status: "playing",
+      lastActivityAt: now,
+      stopAfterHand: undefined,
+      autoResume: undefined,
+      resumeAt: undefined,
+    });
     const handId = await beginHand(ctx, args.roomId, now);
     if (handId === null) {
       // race-free safety net: a concurrent start already flipped the room
@@ -589,8 +617,13 @@ export const getTableState = query({
         ),
       }),
     ),
+    // Every chip committed to the live hand (completed-street pots + the
+    // current street's bets in front of players).
+    totalPot: v.optional(v.number()),
     lastHandResult: v.optional(
       v.object({
+        // which hand these winners belong to (during hand N+1 it is hand N)
+        handNumber: v.number(),
         winners: v.array(
           v.object({
             username: v.string(),
@@ -649,7 +682,12 @@ export const getTableState = query({
 
     const state = handDoc === null ? null : docToState(handDoc, room.bigBlind);
     const participants = state === null ? [] : state.players;
-    const revealedIds = resultHand === null ? [] : resultHand.result?.revealedUserIds ?? [];
+    // Reveals apply ONLY to the hand whose hole cards are projected below
+    // (`participants` = the current hand). A previous hand's showdown list must
+    // never unlock the next hand's cards (00 §5).
+    const revealedIds = resultHand === null || handDoc === null || resultHand._id !== handDoc._id
+      ? []
+      : resultHand.result?.revealedUserIds ?? [];
     const currentTurnSeat =
       handDoc === null || handDoc.currentTurnSeat === undefined || handDoc.currentTurnSeat === null
         ? -1
@@ -732,7 +770,7 @@ export const getTableState = query({
           ...(w.handRankLabel === undefined || w.handRankLabel === null ? {} : { handRankLabel: w.handRankLabel }),
         });
       }
-      lastHandResult = { winners };
+      lastHandResult = { handNumber: resultHand.handNumber, winners };
     }
 
     const stage: "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "finished" =
@@ -746,7 +784,8 @@ export const getTableState = query({
       ...(handDoc === null ? {} : { handNumber: handDoc.handNumber }),
       board: handDoc === null ? [] : handDoc.board,
       // 08 §4: amounts only; eligibility never crosses the projection.
-      pots: handDoc === null ? [] : handDoc.pots.map((p2) => ({ amount: p2.amount })),
+      pots: state === null ? [] : displayPots(state),
+      ...(state === null ? {} : { totalPot: state.players.reduce((acc, p2) => acc + p2.betTotal, 0) }),
       ...(handDoc === null ? {} : { dealerSeat: handDoc.dealerSeat }),
       ...(handLive && currentTurnSeat >= 0 ? { currentTurnSeat } : {}),
       ...(handLive && handDoc.turnDeadline !== undefined && handDoc.turnDeadline !== null
@@ -755,14 +794,47 @@ export const getTableState = query({
       yourTurn,
       ...(legal === undefined ? {} : { legal }),
       // 07 §2.4: "Next hand in Ns" as a server timestamp, never client-measured
-      ...(handDoc !== null && handDoc.stage === "finished" && room.status === "playing"
+      ...(handDoc !== null && handDoc.stage === "finished" && room.status === "playing" && room.stopAfterHand !== true
         ? { nextHandAt: (handDoc.finishedAt === undefined || handDoc.finishedAt === null ? now : handDoc.finishedAt) + NEXT_HAND_DELAY_MS }
-        : {}),
+        : room.status === "waiting" && room.autoResume === true && room.resumeAt !== undefined && room.resumeAt !== null
+          ? { nextHandAt: room.resumeAt }
+          : {}),
       seats: seatViews,
       ...(lastHandResult === undefined ? {} : { lastHandResult }),
     };
   },
 });
+
+/**
+ * Pots as shown at the table (08 §4 amounts only): chips from COMPLETED
+ * streets — the current street's bets are still in front of the players
+ * (`seats[].betStreet`) — with adjacent bands of identical eligibility merged,
+ * so only real side pots (from all-ins) appear as separate pots.
+ */
+function displayPots(state: HandState): Array<{ amount: number }> {
+  const contributed: Record<string, number> = {};
+  const folded: string[] = [];
+  for (const p of state.players) {
+    const done = p.betTotal - p.betStreet;
+    if (done > 0) {
+      contributed[p.userId] = done;
+    }
+    if (p.status === "folded") {
+      folded.push(p.userId);
+    }
+  }
+  const out: Array<{ amount: number; key: string }> = [];
+  for (const band of buildBands(contributed, folded)) {
+    const key = [...band.eligible].sort().join(",");
+    const last = out[out.length - 1];
+    if (last !== undefined && (last.key === key || band.eligible.length === 0)) {
+      last.amount += band.amount;
+    } else {
+      out.push({ amount: band.amount, key });
+    }
+  }
+  return out.map((p) => ({ amount: p.amount }));
+}
 
 /** Seat document of (room, user), or null. */
 async function seatOf(
@@ -889,12 +961,81 @@ export const startNextHand = internalMutation({
       }
     }
     const now = Date.now();
+    if (room.stopAfterHand === true) {
+      // the host ended the game mid-hand: this was the last hand
+      await ctx.db.patch("rooms", args.roomId, {
+        status: "waiting",
+        lastActivityAt: now,
+        stopAfterHand: undefined,
+        autoResume: undefined,
+        resumeAt: undefined,
+      });
+      return { started: false };
+    }
     const handId = await beginHand(ctx, args.roomId, now);
     if (handId === null) {
-      await ctx.db.patch("rooms", args.roomId, { status: "waiting", lastActivityAt: now });
+      // only short of players: come back by itself when they return
+      await ctx.db.patch("rooms", args.roomId, {
+        status: "waiting",
+        lastActivityAt: now,
+        autoResume: true,
+        resumeAt: undefined,
+      });
       return { started: false };
     }
     return { started: true };
+  },
+});
+
+// ------------------------------------------------------------- auto-resume
+
+/**
+ * A room that fell back to `waiting` only for lack of players (`autoResume`)
+ * restarts by itself NEXT_HAND_DELAY_MS after ≥ 2 seats qualify again. Called
+ * by `rooms.sitDown` / `toggleSitOut(false)` / `topUp`. At most one pending
+ * restart (`resumeAt` doubles as the scheduled callback's guard token).
+ */
+export async function maybeAutoResume(ctx: MutationCtx, roomId: Id<"rooms">): Promise<void> {
+  const room = await ctx.db.get("rooms", roomId);
+  if (room === null || room.status !== "waiting" || room.autoResume !== true) {
+    return;
+  }
+  const now = Date.now();
+  if (room.resumeAt !== undefined && room.resumeAt !== null && room.resumeAt > now - 60_000) {
+    return; // already pending
+  }
+  if ((await qualifyingSeats(ctx, roomId)).length < 2) {
+    return;
+  }
+  const resumeAt = now + NEXT_HAND_DELAY_MS;
+  await ctx.db.patch("rooms", roomId, { resumeAt });
+  await ctx.scheduler.runAfter(NEXT_HAND_DELAY_MS, internal.game.resumeGame, { roomId, resumeAt });
+}
+
+/** The scheduled half of `maybeAutoResume`: deal if still wanted and possible. */
+export const resumeGame = internalMutation({
+  args: { roomId: v.id("rooms"), resumeAt: v.number() },
+  returns: v.object({ started: v.boolean() }),
+  handler: async (ctx, args) => {
+    const room = await ctx.db.get("rooms", args.roomId);
+    // guard: still waiting, still auto, and this is the pending restart
+    if (room === null || room.status !== "waiting" || room.autoResume !== true || room.resumeAt !== args.resumeAt) {
+      return { started: false };
+    }
+    const now = Date.now();
+    if ((await qualifyingSeats(ctx, args.roomId)).length < 2) {
+      await ctx.db.patch("rooms", args.roomId, { resumeAt: undefined });
+      return { started: false };
+    }
+    await ctx.db.patch("rooms", args.roomId, {
+      status: "playing",
+      lastActivityAt: now,
+      autoResume: undefined,
+      resumeAt: undefined,
+      stopAfterHand: undefined,
+    });
+    const handId = await beginHand(ctx, args.roomId, now);
+    return { started: handId !== null };
   },
 });
 
@@ -1094,12 +1235,25 @@ export async function foldMidHand(
       ? { ...p, status: "folded" as "active" | "folded" | "allIn", hasActed: true }
       : { ...p },
   );
+  // The reducer searches for the next actor clockwise AFTER `turnSeat`. When
+  // someone other than the current actor stands up, the current actor must
+  // stay in the search, so start it one seat before them.
+  const othersTurn = state.turnSeat >= 0 && state.turnSeat !== me.seatIndex;
   const folded: HandState = {
     ...state,
     players: foldedPlayers,
+    turnSeat: othersTurn ? (state.turnSeat - 1 + SEATS) % SEATS : state.turnSeat,
     lastAction: { userId, action: "fold" },
   };
   const next = advanceStreetIfNeeded(folded);
-  await persistAndSchedule(ctx, hand, next, Date.now(), bumpStat(hand.timeoutStats, userId, false));
+  const sameTurn = othersTurn && next.stage === state.stage && next.turnSeat === state.turnSeat;
+  await persistAndSchedule(
+    ctx,
+    hand,
+    next,
+    Date.now(),
+    bumpStat(hand.timeoutStats, userId, false),
+    sameTurn && hand.turnDeadline !== undefined && hand.turnDeadline !== null ? hand.turnDeadline : undefined,
+  );
   return true;
 }

@@ -20,7 +20,7 @@ import {
 } from "./lib/constants";
 import { fail, INVALID_ROOM_SETTINGS, JOIN_DENIED, NOT_A_MEMBER, NOT_HOST, ROOM_CLOSED, SEAT_TAKEN, ALREADY_SEATED, INSUFFICIENT_BALANCE, GAME_IN_PROGRESS, BETWEEN_HANDS_ONLY } from "./lib/errors";
 import { requireSession } from "./lib/session";
-import { foldMidHand } from "./game";
+import { foldMidHand, maybeAutoResume } from "./game";
 import { sha256Hex } from "./lib/hash";
 
 const LOBBY_LIMIT = 50; // 08 §3 listPublicRooms cap
@@ -266,6 +266,8 @@ export const getRoom = query({
     isHost: v.optional(v.boolean()),
     yourSeatIndex: v.optional(v.number()),
     lastActivityAt: v.optional(v.number()),
+    // host pressed "End game" during a hand: the room stops after this hand
+    stopAfterHand: v.optional(v.boolean()),
     seats: v.optional(
       v.array(
         v.object({
@@ -327,6 +329,7 @@ export const getRoom = query({
       isHost: room.hostId === user._id,
       yourSeatIndex: mine === undefined || mine === null ? undefined : mine.seatIndex,
       lastActivityAt: room.lastActivityAt,
+      stopAfterHand: room.stopAfterHand === true ? true : undefined,
       seats: seatViews,
     };
   },
@@ -435,6 +438,7 @@ export const sitDown = mutation({
       });
     }
     await ctx.db.patch("rooms", args.roomId, { lastActivityAt: now });
+    await maybeAutoResume(ctx, args.roomId);
     return { stack: room.buyIn };
   },
 });
@@ -559,11 +563,16 @@ export const toggleSitOut = mutation({
       state: args.sittingOut ? "sittingOut" : "seated",
       lastSeenAt: Date.now(),
     });
+    if (!args.sittingOut) {
+      await maybeAutoResume(ctx, args.roomId);
+    }
     return { ok: true };
   },
 });
 
-// Rebuy: between hands only (05 §4). Adds min(buyIn − stack, balance).
+// Rebuy (05 §4, relaxed): between hands, or mid-hand for a player who was not
+// dealt into the live hand (their seat stack is not in play). Adds
+// min(buyIn − stack, balance).
 export const topUp = mutation({
   args: { sessionToken: v.string(), roomId: v.id("rooms") },
   returns: v.object({ stack: v.number(), balance: v.number() }),
@@ -573,12 +582,15 @@ export const topUp = mutation({
     if (room === null) {
       fail(JOIN_DENIED);
     }
-    if (await liveHandStage(ctx, room)) {
-      fail(BETWEEN_HANDS_ONLY);
-    }
     const mine = await membership(ctx, args.roomId, user._id);
     if (mine === null || mine.seatIndex < 0 || mine.state === "left") {
       fail(NOT_A_MEMBER);
+    }
+    if (room.currentHandId !== undefined && room.currentHandId !== null) {
+      const hand = await ctx.db.get("hands", room.currentHandId);
+      if (hand !== null && hand.stage !== "finished" && hand.players.some((p) => p.userId === user._id)) {
+        fail(BETWEEN_HANDS_ONLY);
+      }
     }
     const add = Math.max(0, Math.min(room.buyIn - mine.stack, user.balance));
     const stack = mine.stack + add;
@@ -587,6 +599,7 @@ export const topUp = mutation({
     await ctx.db.patch("users", user._id, { balance });
     await ctx.db.patch("seats", mine._id, { stack, lastSeenAt: Date.now() });
     await ctx.db.patch("rooms", args.roomId, { lastActivityAt: Date.now() });
+    await maybeAutoResume(ctx, args.roomId);
     return { stack, balance };
   },
 });
@@ -605,13 +618,19 @@ export const endGame = mutation({
     if (room.hostId !== user._id) {
       fail(NOT_HOST);
     }
-    // Only at a hand boundary — currentHandId's stage ≠ finished ⇒ live.
+    // Mid-hand (05 §5 relaxed): let the live hand finish, then stop —
+    // `startNextHand` sees the flag and returns the room to `waiting`.
     if (await liveHandStage(ctx, room)) {
-      fail(GAME_IN_PROGRESS);
+      await ctx.db.patch("rooms", args.roomId, { stopAfterHand: true, lastActivityAt: Date.now() });
+      return { ok: true };
     }
+    // An explicit end also cancels any pending automatic restart.
     await ctx.db.patch("rooms", args.roomId, {
       status: "waiting",
       lastActivityAt: Date.now(),
+      stopAfterHand: undefined,
+      autoResume: undefined,
+      resumeAt: undefined,
     });
     return { ok: true };
   },

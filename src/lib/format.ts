@@ -1,10 +1,7 @@
-// Display-only helpers — design/07 §4 (amounts, card labels) plus the
-// presentational countdowns of 07 §2.4. Nothing here is authoritative: the
-// server owns rules, these merely render what the projection already decided.
-// Card encoding mirrors convex/game/cards.ts (04 §2) exactly.
+// Display-only helpers. Card encoding mirrors convex/game/cards.ts:
+// card = suit * 13 + rank, rank 0 = "2" … 12 = "A", suits s h d c.
 
 export const RANK_CHARS = "23456789TJQKA";
-export const SUIT_CHARS = "shdc";
 export const SUIT_GLYPHS = ["♠", "♥", "♦", "♣"];
 
 export function rankOf(card: number): number {
@@ -15,9 +12,17 @@ export function suitOf(card: number): number {
   return Math.floor(card / 13);
 }
 
-/** Rank glyph + suit glyph for a card ("A♠"); `back` renders the face-down card. */
+export function rankText(card: number): string {
+  const ch = RANK_CHARS[rankOf(card)];
+  return ch === "T" ? "10" : ch;
+}
+
+export function suitGlyph(card: number): string {
+  return SUIT_GLYPHS[suitOf(card)];
+}
+
 export function cardLabel(card: number): string {
-  return RANK_CHARS[rankOf(card)] + SUIT_GLYPHS[suitOf(card)];
+  return rankText(card) + suitGlyph(card);
 }
 
 export function isRedSuit(card: number): boolean {
@@ -25,55 +30,59 @@ export function isRedSuit(card: number): boolean {
   return suit === 1 || suit === 2;
 }
 
-/** Thousands separators; chip values are always integers (07 §4). */
 export function formatChips(amount: number): string {
   const whole = Math.trunc(amount);
-  const grouped = whole.toLocaleString("en-US");
-  return whole < 0 ? `−${grouped.replace("-", "")}` : grouped;
+  const grouped = Math.abs(whole).toLocaleString("en-US");
+  return whole < 0 ? `−${grouped}` : grouped;
 }
 
-/** Street label shown at the table centre (04 §4 stage names). */
 export function stageLabel(stage: string): string {
   const labels: Record<string, string> = {
-    preflop: "Preflop",
+    preflop: "Pre-flop",
     flop: "Flop",
     turn: "Turn",
     river: "River",
     showdown: "Showdown",
-    finished: "Hand over",
-    waiting: "Waiting",
+    finished: "Hand complete",
+    waiting: "Waiting for players",
   };
   return labels[stage] ?? stage;
 }
 
-/** One-line last-action ticker text, e.g. "raised to 400" (07 §2.4). */
 export function actionLabel(kind: string, amount: number | undefined): string {
   switch (kind) {
     case "fold":
-      return "folded";
+      return "Fold";
     case "check":
-      return "checked";
+      return "Check";
     case "call":
-      return amount === undefined ? "called" : `called ${formatChips(amount)}`;
+      return amount === undefined ? "Call" : `Call ${formatChips(amount)}`;
     case "raiseTo":
-      return amount === undefined ? "raised" : `raised to ${formatChips(amount)}`;
+      return amount === undefined ? "Raise" : `Raise ${formatChips(amount)}`;
     case "allIn":
-      return amount === undefined ? "moved all-in" : `moved all-in to ${formatChips(amount)}`;
+      return "All-in";
     case "timeout-check":
-      return "timed out, checked";
+      return "Check (time)";
     case "timeout-fold":
-      return "timed out, folded";
+      return "Fold (time)";
     default:
       return kind;
   }
 }
 
-/** Countdown copy derived from a server deadline (never authoritative). */
+/** CSS modifier for an action chip. */
+export function actionClass(kind: string): string {
+  if (kind === "fold" || kind === "timeout-fold") return "fold";
+  if (kind === "raiseTo") return "raise";
+  if (kind === "allIn") return "allin";
+  return "";
+}
+
 export function secondsLeft(deadline: number, now: number): number {
   return Math.max(0, Math.ceil((deadline - now) / 1000));
 }
 
-export function countdownLabel(remainingMs: number): string {
-  const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
-  return `${seconds}s`;
+export function timeOfDay(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }

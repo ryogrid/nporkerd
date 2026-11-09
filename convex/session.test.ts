@@ -18,14 +18,16 @@ function seedFrom(label: string): Uint8Array {
 const modules = import.meta.glob("./**/*.ts");
 
 async function expectUnauthenticated(label: string, fn: () => Promise<unknown>) {
+  let threw = false;
   try {
     await fn();
-    expect(label).toBe("did not throw");
   } catch (e) {
+    threw = true;
     const data = (e as { data?: unknown }).data;
     const code = typeof data === "object" && typeof (data as { code?: string }).code === "string" ? (data as { code: string }).code : String(e);
     expect(code).toContain(UNAUTHENTICATED);
   }
+  expect(threw, "expected the call to throw").toBe(true);
 }
 
 describe("session", () => {

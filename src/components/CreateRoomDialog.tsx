@@ -1,172 +1,174 @@
-// CreateRoomDialog (design/07 §2.3, settings table in 05 §2): every setting is
-// a labelled field with the documented default; the passphrase field appears
-// only when visibility is private, with the "cannot be shown again" note (05
-// §2/07 §2.3). Values are read from the fields at submit time (they are plain
-// <input>s, keyboard reachable), checked locally for friendlier UX, and the
-// server re-validates everything regardless.
-import { useRef, useState } from "react";
+// Host a table: stake presets plus fully editable settings, checked locally
+// for friendly messages (the server re-validates everything).
+import { FormEvent, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { errorCopyFor } from "../lib/errorCopy";
+import { formatChips } from "../lib/format";
+import { useToast } from "../lib/toast";
+import {
+  BUY_IN_MIN_BIG_BLINDS,
+  MAX_SEATS_MAX,
+  MAX_SEATS_MIN,
+  PASSPHRASE_MAX,
+  PASSPHRASE_MIN,
+  ROOM_NAME_MAX,
+  TURN_SECONDS_MAX,
+  TURN_SECONDS_MIN,
+} from "../../convex/lib/constants";
 
-const DEFAULTS = {
-  name: "Kitchen table",
-  maxSeats: "9",
-  smallBlind: "10",
-  bigBlind: "20",
-  buyIn: "1000",
-  turnSeconds: "30",
-};
+const STAKES: Array<{ label: string; sb: number; bb: number; buyIn: number }> = [
+  { label: "Micro", sb: 5, bb: 10, buyIn: 500 },
+  { label: "Low", sb: 10, bb: 20, buyIn: 1000 },
+  { label: "Mid", sb: 25, bb: 50, buyIn: 2500 },
+  { label: "High", sb: 100, bb: 200, buyIn: 10000 },
+];
 
-/** Client-side mirror of 05 §2 (the server stays the authority). */
-export function localSettingErrors(
-  name: string,
-  visibility: string,
-  passphrase: string,
-  maxSeats: number,
-  smallBlind: number,
-  bigBlind: number,
-  buyIn: number,
-  turnSeconds: number,
-): string[] {
+export function localSettingErrors(s: {
+  name: string; visibility: string; passphrase: string; maxSeats: number;
+  smallBlind: number; bigBlind: number; buyIn: number; turnSeconds: number;
+}): string[] {
   const problems: string[] = [];
-  const trimmed = name.trim();
-  if (trimmed.length < 1 || trimmed.length > 40) {
-    problems.push("the room name must be 1–40 characters");
+  const trimmed = s.name.trim();
+  if (trimmed.length < 1 || trimmed.length > ROOM_NAME_MAX) problems.push(`Name must be 1–${ROOM_NAME_MAX} characters.`);
+  if (s.visibility === "private" && (s.passphrase.length < PASSPHRASE_MIN || s.passphrase.length > PASSPHRASE_MAX)) {
+    problems.push(`Passphrase must be ${PASSPHRASE_MIN}–${PASSPHRASE_MAX} characters.`);
   }
-  if (visibility === "private" && (passphrase.length < 4 || passphrase.length > 64)) {
-    problems.push("a private room needs a passphrase of 4–64 characters");
+  if (!Number.isInteger(s.maxSeats) || s.maxSeats < MAX_SEATS_MIN || s.maxSeats > MAX_SEATS_MAX) problems.push(`Seats: ${MAX_SEATS_MIN}–${MAX_SEATS_MAX}.`);
+  if (!Number.isInteger(s.smallBlind) || s.smallBlind < 1) problems.push("Small blind must be at least 1.");
+  if (!Number.isInteger(s.bigBlind) || s.bigBlind <= s.smallBlind) problems.push("Big blind must be above the small blind.");
+  if (!Number.isInteger(s.buyIn) || s.buyIn < s.bigBlind * BUY_IN_MIN_BIG_BLINDS) {
+    problems.push(`Buy-in must be at least ${BUY_IN_MIN_BIG_BLINDS} big blinds (${formatChips(s.bigBlind * BUY_IN_MIN_BIG_BLINDS)}).`);
   }
-  if (!Number.isInteger(maxSeats) || maxSeats < 2 || maxSeats > 9) {
-    problems.push("seats must be a whole number 2–9");
-  }
-  if (!Number.isInteger(smallBlind) || smallBlind < 1) {
-    problems.push("the small blind must be a whole number ≥ 1");
-  }
-  if (!Number.isInteger(bigBlind) || bigBlind <= smallBlind) {
-    problems.push("the big blind must be a whole number above the small blind");
-  }
-  if (!Number.isInteger(buyIn) || buyIn < bigBlind * 10) {
-    problems.push("buy-in must be at least 10 big blinds");
-  }
-  const clockOk = turnSeconds === 0 || (Number.isInteger(turnSeconds) && turnSeconds >= 10 && turnSeconds <= 120);
-  if (!clockOk) {
-    problems.push("turn clock: 0 (off) or 10–120 seconds");
-  }
+  const clockOk = s.turnSeconds === 0 || (Number.isInteger(s.turnSeconds) && s.turnSeconds >= TURN_SECONDS_MIN && s.turnSeconds <= TURN_SECONDS_MAX);
+  if (!clockOk) problems.push(`Turn clock: 0 (off) or ${TURN_SECONDS_MIN}–${TURN_SECONDS_MAX} seconds.`);
   return problems;
 }
 
-function wholeNumber(value: string | undefined): number {
-  const digits = (value ?? "").replace(/[^0-9]/g, "");
+const toInt = (v: string) => {
+  const digits = v.replace(/[^0-9]/g, "");
   return digits === "" ? 0 : Number.parseInt(digits, 10);
-}
+};
 
-export function CreateRoomDialog({ sessionToken, onCreated }: {
+export function CreateRoomDialog({ sessionToken, defaultName, onCreated }: {
   sessionToken: string;
+  defaultName: string;
   onCreated: (roomId: Id<"rooms">) => void;
 }) {
   const createRoom = useMutation(api.rooms.createRoom);
-  const name = useRef<HTMLInputElement>(null);
-  const visibility = useRef<HTMLSelectElement>(null);
-  const passphrase = useRef<HTMLInputElement>(null);
-  const maxSeats = useRef<HTMLInputElement>(null);
-  const smallBlind = useRef<HTMLInputElement>(null);
-  const bigBlind = useRef<HTMLInputElement>(null);
-  const buyIn = useRef<HTMLInputElement>(null);
-  const turnSeconds = useRef<HTMLInputElement>(null);
-  const [notice, setNotice] = useState<string | undefined>(undefined);
+  const toast = useToast();
+  const [name, setName] = useState(defaultName);
+  const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [passphrase, setPassphrase] = useState("");
+  const [maxSeats, setMaxSeats] = useState("6");
+  const [smallBlind, setSmallBlind] = useState("10");
+  const [bigBlind, setBigBlind] = useState("20");
+  const [buyIn, setBuyIn] = useState("1000");
+  const [turnSeconds, setTurnSeconds] = useState("30");
+  const [busy, setBusy] = useState(false);
+  const [problems, setProblems] = useState<string[]>([]);
 
-  const chosenVisibility: "public" | "private" =
-    (visibility.current?.value ?? "public") === "private" ? "private" : "public";
+  const settings = {
+    name, visibility, passphrase,
+    maxSeats: toInt(maxSeats), smallBlind: toInt(smallBlind), bigBlind: toInt(bigBlind),
+    buyIn: toInt(buyIn), turnSeconds: toInt(turnSeconds),
+  };
+  const activeStake = STAKES.find((s) => s.sb === settings.smallBlind && s.bb === settings.bigBlind && s.buyIn === settings.buyIn);
 
-  async function create(): Promise<void> {
-    setNotice(undefined);
-    const problems = localSettingErrors(
-      name.current?.value ?? DEFAULTS.name,
-      chosenVisibility,
-      passphrase.current?.value ?? "",
-      wholeNumber(maxSeats.current?.value),
-      wholeNumber(smallBlind.current?.value),
-      wholeNumber(bigBlind.current?.value),
-      wholeNumber(buyIn.current?.value),
-      wholeNumber(turnSeconds.current?.value),
-    );
-    if (problems.length > 0) {
-      setNotice(problems.join("; "));
-      return;
-    }
-    const settings = {
-      sessionToken,
-      name: (name.current?.value ?? DEFAULTS.name).trim(),
-      maxSeats: wholeNumber(maxSeats.current?.value),
-      smallBlind: wholeNumber(smallBlind.current?.value),
-      bigBlind: wholeNumber(bigBlind.current?.value),
-      buyIn: wholeNumber(buyIn.current?.value),
-      turnSeconds: wholeNumber(turnSeconds.current?.value),
-    };
+  async function submit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    const found = localSettingErrors(settings);
+    setProblems(found);
+    if (found.length > 0 || busy) return;
+    setBusy(true);
     try {
-      const created = chosenVisibility === "private"
-        ? await createRoom({
-            ...settings,
-            visibility: "private",
-            passphrase: passphrase.current?.value ?? "",
-          })
-        : await createRoom({ ...settings, visibility: "public" });
+      const base = {
+        sessionToken,
+        name: name.trim(),
+        maxSeats: settings.maxSeats,
+        smallBlind: settings.smallBlind,
+        bigBlind: settings.bigBlind,
+        buyIn: settings.buyIn,
+        turnSeconds: settings.turnSeconds,
+      };
+      const created = visibility === "private"
+        ? await createRoom({ ...base, visibility: "private", passphrase })
+        : await createRoom({ ...base, visibility: "public" });
       onCreated(created.roomId);
-    } catch (e) {
-      setNotice(errorCopyFor(e));
+    } catch (err) {
+      toast.push(errorCopyFor(err));
+      setBusy(false);
     }
   }
 
   return (
-    <div className="np-card">
-      <h2 className="np-title">Create a room</h2>
-      <div className="np-field">
-        <label>Room name (1–40 chars)</label>
-        <input ref={name} type="text" value={DEFAULTS.name} />
-      </div>
-      <div className="np-field">
-        <label>Visibility</label>
-        <select ref={visibility} value="public">
-          <option value="public">public</option>
-          <option value="private">private</option>
-        </select>
-      </div>
-      {chosenVisibility === "private" ? (
-        <div className="np-field">
-          <label>
-            Passphrase, 4–64 chars — it is hashed at once and can never be shown
-            again: remember it, or keep the room link and passphrase together
-          </label>
-          <input ref={passphrase} type="text" />
+    <form className="panel panel-pad stack" onSubmit={(e) => void submit(e)}>
+      <h2 className="panel-title" style={{ margin: 0 }}>Host a table</h2>
+      <label className="field">
+        <span>Table name</span>
+        <input className="input" value={name} maxLength={ROOM_NAME_MAX} onChange={(e) => setName(e.target.value)} />
+      </label>
+
+      <div className="field">
+        <span>Stakes</span>
+        <div className="segmented" role="group" aria-label="Stakes presets">
+          {STAKES.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              className={activeStake === s ? "on" : ""}
+              onClick={() => { setSmallBlind(String(s.sb)); setBigBlind(String(s.bb)); setBuyIn(String(s.buyIn)); }}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
+      </div>
+      <div className="grid-3">
+        <label className="field"><span>Small blind</span><input className="input" inputMode="numeric" value={smallBlind} onChange={(e) => setSmallBlind(e.target.value)} /></label>
+        <label className="field"><span>Big blind</span><input className="input" inputMode="numeric" value={bigBlind} onChange={(e) => setBigBlind(e.target.value)} /></label>
+        <label className="field"><span>Buy-in</span><input className="input" inputMode="numeric" value={buyIn} onChange={(e) => setBuyIn(e.target.value)} /></label>
+      </div>
+      <div className="grid-2">
+        <label className="field">
+          <span>Seats</span>
+          <select className="select input" value={maxSeats} onChange={(e) => setMaxSeats(e.target.value)}>
+            {Array.from({ length: MAX_SEATS_MAX - MAX_SEATS_MIN + 1 }, (_, i) => i + MAX_SEATS_MIN).map((n) => (
+              <option key={n} value={String(n)}>{n === 2 ? "2 (heads-up)" : n}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Turn clock</span>
+          <select className="select input" value={turnSeconds} onChange={(e) => setTurnSeconds(e.target.value)}>
+            {[15, 20, 30, 45, 60, 90, 120].map((n) => <option key={n} value={String(n)}>{n} seconds</option>)}
+            <option value="0">Off</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="field">
+        <span>Visibility</span>
+        <div className="segmented" role="group" aria-label="Visibility">
+          <button type="button" className={visibility === "public" ? "on" : ""} onClick={() => setVisibility("public")}>🌐 Public</button>
+          <button type="button" className={visibility === "private" ? "on" : ""} onClick={() => setVisibility("private")}>🔒 Private</button>
+        </div>
+      </div>
+      {visibility === "private" ? (
+        <label className="field">
+          <span>Passphrase</span>
+          <input className="input" type="text" value={passphrase} maxLength={PASSPHRASE_MAX} onChange={(e) => setPassphrase(e.target.value)} placeholder={`${PASSPHRASE_MIN}+ characters`} />
+          <small>Share the link and the passphrase with friends. It's stored hashed and can't be shown again.</small>
+        </label>
       ) : null}
-      <div className="np-field">
-        <label>Seats (2–9)</label>
-        <input ref={maxSeats} type="text" value={DEFAULTS.maxSeats} />
-      </div>
-      <div className="np-field">
-        <label>Small blind (≥ 1)</label>
-        <input ref={smallBlind} type="text" value={DEFAULTS.smallBlind} />
-      </div>
-      <div className="np-field">
-        <label>Big blind (&gt; small blind)</label>
-        <input ref={bigBlind} type="text" value={DEFAULTS.bigBlind} />
-      </div>
-      <div className="np-field">
-        <label>Buy-in (≥ 10 big blinds)</label>
-        <input ref={buyIn} type="text" value={DEFAULTS.buyIn} />
-      </div>
-      <div className="np-field">
-        <label>Turn clock seconds (0 = off, else 10–120)</label>
-        <input ref={turnSeconds} type="text" value={DEFAULTS.turnSeconds} />
-      </div>
-      <div className="np-muted">
-        defaults: {DEFAULTS.maxSeats} seats · blinds {DEFAULTS.smallBlind}/{DEFAULTS.bigBlind} · buy-in {DEFAULTS.buyIn} · clock {DEFAULTS.turnSeconds}s
-      </div>
-      {notice === undefined ? null : <div className="np-error">{notice}</div>}
-      <button type="button" onClick={() => void create()}>Create room</button>
-    </div>
+
+      {problems.length > 0 ? (
+        <div className="error-text" role="alert">{problems.map((p) => <div key={p}>{p}</div>)}</div>
+      ) : null}
+      <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
+        {busy ? "Opening table…" : "Open table"}
+      </button>
+    </form>
   );
 }

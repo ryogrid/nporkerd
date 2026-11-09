@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { startHand, applyAction, legalActions, seatsAfter, advanceStreetIfNeeded, HandState } from "./engine";
+import { startHand, applyAction, legalActions, seatsAfter, advanceStreetIfNeeded, finishHand, HandState } from "./engine";
 
 /** Deterministic 32-bit PRNG for seeded simulations (mulberry32). */
 function mulberry32(seed: number): () => number {
@@ -375,3 +375,82 @@ describe("randomized simulations", () => {
 function chipsOf(players: Array<{ userId: string; seatIndex: number; stack: number }>): number {
  return players.reduce((acc, p) => acc + p.stack, 0);
 }
+
+// ------------------------------------------------------- audit regressions
+
+describe("audit regressions", () => {
+ const card = (rank: number, suit: number) => suit * 13 + rank;
+ const base = (players: HandState["players"], board: number[]): HandState => ({
+  id: "h", handNumber: 1, buttonSeat: 0, stage: "river", deck: [], board, players,
+  currentBet: 0, minRaise: 10, bigBlind: 10, ante: 0, turnSeat: -1,
+ });
+ const pl = (userId: string, seatIndex: number, put: number, start: number, hole: number[], status: "active" | "allIn" | "folded") =>
+  ({ userId, seatIndex, stackStart: start, stack: start - put, betTotal: put, betStreet: 0, status, hasActed: false, hole });
+
+ it("a side pot goes to the best hand among its eligible players, not back to its contributors (04 §7.3)", () => {
+  const board = [card(0, 0), card(5, 1), card(7, 2), card(9, 3), card(1, 0)];
+  const s = base([
+   pl("a", 0, 100, 100, [card(12, 0), card(12, 2)], "allIn"), // AA — best, short
+   pl("b", 1, 500, 500, [card(11, 0), card(11, 2)], "allIn"), // KK — second
+   pl("c", 2, 500, 900, [card(10, 0), card(10, 2)], "active"), // QQ
+  ], board);
+  finishHand(s);
+  const got = Object.fromEntries(s.result!.shares.map((x) => [x.userId, x.chips]));
+  expect(got.a).toBe(300);
+  expect(got.b).toBe(800);
+  expect(got.c ?? 0).toBe(0);
+  expect(s.result!.winners.map((w) => w.userId).sort()).toEqual(["a", "b"]);
+  expect(s.result!.winners.find((w) => w.userId === "b")!.label).toContain("Pair");
+ });
+
+ it("an uncalled excess returned at showdown is credited but not listed as a winner", () => {
+  const board = [card(0, 0), card(5, 1), card(7, 2), card(9, 3), card(1, 0)];
+  const s = base([
+   pl("a", 0, 100, 100, [card(12, 0), card(12, 2)], "allIn"),
+   pl("b", 1, 500, 900, [card(11, 0), card(11, 2)], "active"),
+  ], board);
+  finishHand(s);
+  const got = Object.fromEntries(s.result!.shares.map((x) => [x.userId, x.chips]));
+  expect(got).toEqual({ a: 200, b: 400 });
+  expect(s.result!.winners.map((w) => w.userId)).toEqual(["a"]);
+ });
+
+ it("a lone active player opposite all-ins is not asked to act on later streets (04 §8)", () => {
+  let s = startHand({
+   id: "h", handNumber: 1, prevButtonSeat: -1,
+   players: [{ userId: "a", seatIndex: 0, stack: 1000 }, { userId: "b", seatIndex: 1, stack: 100 }],
+   smallBlind: 5, bigBlind: 10, ante: 0, randomInt: rngFor(3),
+  }).state;
+  s = applyAction(s, "a", { kind: "raiseTo", amount: 300 });
+  s = applyAction(s, "b", { kind: "allIn" }); // short all-in call
+  expect(s.stage).toBe("flop");
+  expect(s.turnSeat).toBe(-1); // runout, not "a checks alone"
+ });
+
+ it("heads-up: a button all-in from posting the SB does not get the turn", () => {
+  const s = startHand({
+   id: "h", handNumber: 1, prevButtonSeat: -1,
+   players: [{ userId: "a", seatIndex: 0, stack: 5 }, { userId: "b", seatIndex: 1, stack: 1000 }],
+   smallBlind: 5, bigBlind: 10, ante: 0, randomInt: rngFor(4),
+  }).state;
+  expect(s.players.find((p) => p.userId === "a")!.status).toBe("allIn");
+  // BB already covers the SB all-in: nobody has a decision → runout
+  expect(s.turnSeat).toBe(-1);
+ });
+
+ it("a BB all-in for less than the SB never leaves a negative toCall", () => {
+  const s = startHand({
+   id: "h", handNumber: 1, prevButtonSeat: -1,
+   players: [
+    { userId: "a", seatIndex: 0, stack: 1000 },
+    { userId: "b", seatIndex: 1, stack: 1000 },
+    { userId: "c", seatIndex: 2, stack: 3 },
+   ],
+   smallBlind: 5, bigBlind: 10, ante: 0, randomInt: rngFor(5),
+  }).state;
+  expect(s.currentBet).toBe(5);
+  for (const p of s.players) {
+   expect(s.currentBet - p.betStreet).toBeGreaterThanOrEqual(0);
+  }
+ });
+});

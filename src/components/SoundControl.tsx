@@ -1,26 +1,46 @@
-// The mute switch (Phase 10): a labelled button, so the sound state is legible
-// without listening (07 §5's "colour is never the only signal", applied to audio
-// as well). The preference lives in `localStorage` — unlike the session token
-// (D-04), a mute setting that reset on every reload would be hostile.
+// Mute toggle + volume slider. Preferences live in localStorage (lib/sound).
 import { useState } from "react";
-import { soundOn, setSoundOn } from "../lib/sound";
+import { getVolume, playCue, setSoundOn, setVolume, soundOn } from "../lib/sound";
 
 export function SoundControl() {
-  const [label, setLabel] = useState<string>(() => (soundOn() ? "Mute sound" : "Unmute sound"));
+  const [on, setOn] = useState(() => soundOn());
+  const [volume, setVol] = useState(() => getVolume());
 
   function toggle(): void {
-    const next = !soundOn();
+    const next = !on;
     setSoundOn(next);
-    setLabel(next ? "Mute sound" : "Unmute sound");
+    setOn(next);
+    if (next) playCue("chip");
   }
 
   return (
-    <div className="np-field np-actions">
-      <button type="button" onClick={() => toggle()}>{label}</button>
-      <span className="np-muted">
-        sound: {soundOn() ? "on" : "off"} · cues are synthesized in the browser, so the
-        app ships no audio files
-      </span>
-    </div>
+    <span className="sound-ctl">
+      <button
+        type="button"
+        className="icon-btn"
+        onClick={toggle}
+        aria-pressed={on}
+        title={on ? "Mute sound" : "Turn sound on"}
+        aria-label={on ? "Mute sound" : "Turn sound on"}
+      >
+        {on ? "🔊" : "🔇"}
+      </button>
+      {on ? (
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={volume}
+          aria-label="Volume"
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setVol(v);
+            setVolume(v);
+          }}
+          onPointerUp={() => playCue("chip")}
+        />
+      ) : null}
+    </span>
   );
 }

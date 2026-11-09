@@ -1,97 +1,125 @@
-// Auth context — design/07 §1 (session token in sessionStorage) plus 03 §5:
-// `auth.me` doubles as the profile header and the session-validity check on
-// load. `loginWithKeypair` is the client helper the backend comments name
-// (`lib/auth.loginWithKeypair`): it performs the 03 §4.1 challenge round-trip
-// and re-raises `auth.login`'s returned code as a thrown value, so callers
-// observe INVALID_CREDENTIALS / CHALLENGE_EXPIRED exactly as 08 §1 documents.
-import { useEffect } from "react";
+// Session context. The raw token lives in sessionStorage (dies with the tab);
+// `auth.me` validates it and supplies the live profile (balance is reactive).
+// `loginWithKeypair` performs the challenge round-trip of design/03 §4.1.
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery_experimental } from "convex/react";
+import { FunctionReturnType } from "convex/server";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { readSessionToken, clearSessionToken } from "./session";
+import { clearSessionToken, readSessionToken, writeSessionToken } from "./session";
 import { signChallenge } from "./keys";
 import { ChallengeResult, LoginResult } from "./projection";
-import { PRESENCE_ONLINE_MS } from "../../convex/lib/constants";
 
-/** 08 §2: the client beats `users.heartbeat` every 30 s (presence is cosmetic,
- * 05 §8) — the only client timer that is not presentational. */
+/** Heartbeat cadence; presence is cosmetic (design/05 §8). */
 const HEARTBEAT_MS = 30_000;
 
-export type MeProfile = {
-  userId: Id<"users">;
-  username: string;
-  balance: number;
-  publicKeyFingerprint: string;
-  createdAt: number;
-};
+export type MeProfile = FunctionReturnType<typeof api.auth.me>;
 
-export type SessionState = {
-  status: "anonymous" | "pending" | "signed-in" | "invalid";
+export type SessionStatus = "anonymous" | "pending" | "signed-in";
+
+type SessionValue = {
+  status: SessionStatus;
   token: string | undefined;
-  profile: MeProfile | undefined;
+  me: MeProfile | undefined;
+  /** True when a stored token was rejected (expired / logged out elsewhere). */
+  expired: boolean;
+  signIn: (token: string) => void;
+  signOut: () => Promise<void>;
 };
 
-/**
- * React hook: read the stored token and validate it with `auth.me`.
- * A rejected `me` clears the stale token so the app offers register/login.
- */
-export function useSession(): SessionState {
-  const token = readSessionToken();
-  if (token === undefined) {
-    return { status: "anonymous", token: undefined, profile: undefined };
-  }
-  const loaded = useQuery_experimental({
+const SessionContext = createContext<SessionValue | undefined>(undefined);
+
+export function SessionProvider({ children }: { children: ReactNode }) {
+  const [token, setToken] = useState<string | undefined>(() => readSessionToken());
+  const [expired, setExpired] = useState(false);
+  const logout = useMutation(api.auth.logout);
+  const me = useQuery_experimental({
     query: api.auth.me,
-    args: { sessionToken: token },
+    args: token === undefined ? "skip" : { sessionToken: token },
     throwOnError: false,
   });
-  if (loaded.status === "pending") {
-    return { status: "pending", token, profile: undefined };
-  }
-  if (loaded.status === "error") {
+
+  // A rejected token is dropped (outside render, so no state update loops).
+  useEffect(() => {
+    if (token !== undefined && me.status === "error") {
+      clearSessionToken();
+      setToken(undefined);
+      setExpired(true);
+    }
+  }, [token, me.status]);
+
+  const signIn = useCallback((next: string) => {
+    writeSessionToken(next);
+    setExpired(false);
+    setToken(next);
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const current = token;
     clearSessionToken();
-    return { status: "invalid", token: undefined, profile: undefined };
-  }
-  return { status: "signed-in", token, profile: loaded.data };
+    setToken(undefined);
+    if (current !== undefined) {
+      try {
+        await logout({ sessionToken: current });
+      } catch {
+        // the token is gone locally either way
+      }
+    }
+  }, [token, logout]);
+
+  const value = useMemo<SessionValue>(() => {
+    const status: SessionStatus =
+      token === undefined ? "anonymous" : me.status === "success" ? "signed-in" : "pending";
+    return {
+      status,
+      token,
+      me: me.status === "success" ? me.data : undefined,
+      expired,
+      signIn,
+      signOut,
+    };
+  }, [token, me, expired, signIn, signOut]);
+
+  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
-/**
- * The 03 §4.1 round-trip in one place (registration reuses it: 03 §3 step 6).
- * The two mutation references are created by the calling page — `useMutation`
- * is a React hook — and are passed in so this helper stays pure logic.
- */
+export function useSession(): SessionValue {
+  const value = useContext(SessionContext);
+  if (value === undefined) {
+    throw new Error("useSession must be used inside <SessionProvider>");
+  }
+  return value;
+}
+
+/** Challenge → sign → login. Throws `{ code }` on rejection (errorCopy reads it). */
 export async function loginWithKeypair(
   username: string,
   secretKey: string,
   requestChallenge: (args: { username: string }) => Promise<ChallengeResult>,
   login: (args: { challengeId: Id<"loginChallenges">; signature: string }) => Promise<LoginResult>,
-): Promise<LoginResult> {
+): Promise<{ token: string }> {
   const challenge = await requestChallenge({ username });
   const signature = signChallenge(challenge.challengeId, challenge.nonce, secretKey);
   const outcome = await login({ challengeId: challenge.challengeId, signature });
-  if (outcome.ok !== true || outcome.sessionToken === undefined || outcome.user === undefined) {
-    // `login` returns rejections with a code (a throw would roll back the
-    // attempt counter); re-raise it as a `{ code, data }` payload, the same
-    // shape a ConvexError carries, so `errorCopyFor` reads it.
+  if (outcome.ok !== true || outcome.sessionToken === undefined) {
     throw { code: outcome.code ?? "INVALID_CREDENTIALS", data: null };
   }
-  return outcome;
+  return { token: outcome.sessionToken };
 }
 
-/** Keeps `lastSeenAt` fresh so presence dots stay honest (05 §8, 08 §2). */
-export function PresenceTicker({ token, roomId }: { token: string; roomId?: Id<"rooms"> }) {
+/** Keeps `lastSeenAt` fresh: one beat immediately, then every 30 s. */
+export function usePresence(token: string | undefined, roomId?: Id<"rooms">): void {
   const beat = useMutation(api.users.heartbeat);
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (roomId === undefined) {
-        void beat({ sessionToken: token });
-      } else {
-        void beat({ sessionToken: token, roomId });
-      }
-    }, HEARTBEAT_MS);
-    return () => {
-      void clearInterval(timer);
+    if (token === undefined) {
+      return;
+    }
+    const send = () => {
+      const args = roomId === undefined ? { sessionToken: token } : { sessionToken: token, roomId };
+      beat(args).catch(() => undefined);
     };
-  }, [token, roomId]);
-  return <span className="np-muted">online within {Math.round(PRESENCE_ONLINE_MS / 1000)}s · refreshed every {HEARTBEAT_MS / 1000}s</span>;
+    send();
+    const timer = window.setInterval(send, HEARTBEAT_MS);
+    return () => window.clearInterval(timer);
+  }, [token, roomId, beat]);
 }

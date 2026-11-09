@@ -29,12 +29,14 @@ function errorCodeOf(e: unknown): string {
 }
 
 async function expectError(fn: () => Promise<unknown>, code: string) {
+  let threw = false;
   try {
     await fn();
-    expect(code).toBe("did not throw");
   } catch (e) {
+    threw = true;
     expect(errorCodeOf(e)).toContain(code);
   }
+  expect(threw, "expected the call to throw").toBe(true);
 }
 
 describe("rooms", () => {
@@ -311,20 +313,27 @@ describe("rooms", () => {
     const room = await t.mutation(api.rooms.createRoom, { sessionToken: "tok_gh", name: "Guard" });
     await t.mutation(api.rooms.sitDown, { sessionToken: "tok_gh", roomId: room.roomId, seatIndex: 0 });
     const handId = await seedHand(room.roomId, "turn");
-    // host powers stay hand-boundary-only (05 §5)
-    await expectError(
-      async () => await t.mutation(api.rooms.endGame, { sessionToken: "tok_gh", roomId: room.roomId }),
-      errorCodes.GAME_IN_PROGRESS,
-    );
+    // endGame mid-hand is deferred: the room stops after this hand
+    const deferred = await t.mutation(api.rooms.endGame, { sessionToken: "tok_gh", roomId: room.roomId });
+    expect(deferred.ok).toBe(true);
+    const flagged = await t.query(api.rooms.getRoom, { sessionToken: "tok_gh", roomId: room.roomId });
+    expect(flagged.stopAfterHand).toBe(true);
+    expect(flagged.status).toBe("waiting"); // seeded room never left waiting
     await expectError(
       async () => await t.mutation(api.rooms.closeRoom, { sessionToken: "tok_gh", roomId: room.roomId }),
       errorCodes.GAME_IN_PROGRESS,
     );
-    // topUp is the one with its own code — BETWEEN_HANDS_ONLY
+    // topUp mid-hand: fine when not dealt in, BETWEEN_HANDS_ONLY when dealt in
+    const notDealt = await t.mutation(api.rooms.topUp, { sessionToken: "tok_gh", roomId: room.roomId });
+    expect(notDealt.stack).toBe(1000);
+    await t.run(async (ctx) => await ctx.db.patch("hands", handId, {
+      players: [{ userId: host, seatIndex: 0, holeCards: [], stackStart: 1000, betStreet: 0, betTotal: 0, status: "active", hasActed: false }],
+    }));
     await expectError(
       async () => await t.mutation(api.rooms.topUp, { sessionToken: "tok_gh", roomId: room.roomId }),
       errorCodes.BETWEEN_HANDS_ONLY,
     );
+    await t.run(async (ctx) => await ctx.db.patch("hands", handId, { players: [] }));
     // 05 §4: standing up mid-hand is legal — the player is folded first through
     // the engine (the fold itself is exercised on a real hand in game.test.ts),
     // so the whole stack cashes back out here.

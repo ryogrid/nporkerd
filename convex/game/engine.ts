@@ -8,7 +8,7 @@
  * are credited via `shares`.
  */
 
-import { awardContributions } from "./pots";
+import { awardBand, awardContributions, buildBands } from "./pots";
 import { compare, evaluate } from "./evaluator";
 import { RandomInt, createDeck, shuffle } from "./cards";
 
@@ -52,6 +52,12 @@ export interface HandResult {
  shares: Array<{ userId: string; chips: number }>;
  revealedUserIds: string[];
  handRankLabel: string;
+ /**
+  * Who actually won chips (a contested band, or the whole pot by fold), with
+  * the total they were credited and their own hand label. Uncalled chips
+  * returned to a non-winner are in `shares` but not here.
+  */
+ winners: Array<{ userId: string; chips: number; label: string }>;
 }
 
 export interface ActionData {
@@ -118,6 +124,12 @@ function seatOrder(buttonSeat: number, seats: number[]): number[] {
 
 /** Next actor clockwise from `from` who still needs to act this street. */
 function nextActorSeat(players: HandPlayer[], from: number, currentBet: number): number {
+ // 04 §8: with ≤ 1 player still able to bet there is no betting left unless
+ // that lone player still faces chips to call.
+ const able = players.filter((p) => p.status === "active");
+ if (able.length <= 1 && (able.length === 0 || able[0].betStreet >= currentBet)) {
+  return -1;
+ }
  const candidates = players.filter((p) => p.status === "active" && (!p.hasActed || p.betStreet < currentBet));
  const ordered = seatsAfter(from, candidates.map((p) => p.seatIndex));
  return ordered.length > 0 ? ordered[0] : -1;
@@ -193,7 +205,9 @@ export function startHand(input: StartHandInput): StartHandResult {
  commit(sbSeat, input.smallBlind);
  commit(bbSeat, input.bigBlind);
 
- const bbPlayer = players.find((p) => p.seatIndex === bbSeat);
+ // A blind posted all-in for less can leave the BB below the SB: the bet to
+ // match is the largest blind actually on the table (never a negative toCall).
+ const openingBet = Math.max(0, ...players.map((p) => p.betStreet));
  const state: HandState = {
   id: input.id,
   handNumber: input.handNumber,
@@ -202,12 +216,13 @@ export function startHand(input: StartHandInput): StartHandResult {
   deck,
   board: [],
   players,
-  currentBet: bbPlayer ? bbPlayer.betStreet : 0,
+  currentBet: openingBet,
   minRaise: input.bigBlind,
   bigBlind: input.bigBlind,
   ante: input.ante,
-  // preflop first actor: heads-up the button (small blind); else left of BB.
-  turnSeat: participants.length === 2 ? buttonSeat : nextActorSeat(players, bbSeat, bbPlayer ? bbPlayer.betStreet : 0),
+  // preflop first actor: left of the BB — heads-up that is the button (small
+  // blind). Skips players already all-in from posting; -1 ⇒ straight runout.
+  turnSeat: nextActorSeat(players, bbSeat, openingBet),
  };
   const deltas = state.players.map((p) => ({ userId: p.userId, stack: p.stack }));
  return { state, deltas };
@@ -258,6 +273,7 @@ export function finishHand(state: HandState): void {
    shares: awarded.shares,
    revealedUserIds: [],
    handRankLabel: "Won by fold",
+   winners: [{ userId: winner.userId, chips: awarded.shares.filter((x) => x.userId === winner.userId).reduce((a, x) => a + x.chips, 0), label: "Won by fold" }],
   };
   return;
  }
@@ -268,19 +284,50 @@ export function finishHand(state: HandState): void {
    best = s;
   }
  }
-  const winners = scored.filter((s) => compare(s.eval, best.eval) === 0).map((s) => ({ userId: s.userId, seatIndex: s.seatIndex }));
- const awarded = awardContributions({
-  contributed,
-  folded,
-  winners,
-  dealer: { userId: state.players.find((p) => p.seatIndex === dealerSeat)?.userId ?? "", seatIndex: dealerSeat },
- });
+ // 04 §7 step 3: EACH band goes to the best hand among the players eligible
+ // for that band (a short all-in best hand wins only the bands it covered;
+ // the side pots go to the best of the rest).
+ const dealer = { userId: state.players.find((p) => p.seatIndex === dealerSeat)?.userId ?? "", seatIndex: dealerSeat };
+ const credited: Record<string, number> = {};
+ const wonContested = new Set<string>();
+ for (const band of buildBands(contributed, folded)) {
+  const eligible = scored.filter((x) => band.eligible.includes(x.userId));
+  if (eligible.length === 0) {
+   for (const [u, c] of Object.entries(band.contributions)) {
+    credited[u] = (credited[u] ?? 0) + c;
+   }
+   continue;
+  }
+  let top = eligible[0];
+  for (const x of eligible) {
+   if (compare(x.eval, top.eval) > 0) {
+    top = x;
+   }
+  }
+  const bandWinners = eligible.filter((x) => compare(x.eval, top.eval) === 0);
+  for (const sh of awardBand(band.amount, bandWinners, dealer).shares) {
+   credited[sh.userId] = (credited[sh.userId] ?? 0) + sh.chips;
+  }
+  if (eligible.length >= 2) {
+   for (const w of bandWinners) {
+    wonContested.add(w.userId);
+   }
+  }
+ }
+ if (wonContested.size === 0) {
+  wonContested.add(best.userId);
+ }
+ const shares = Object.entries(credited).map(([userId, chips]) => ({ userId, chips }));
+ const winners = scored
+  .filter((x) => wonContested.has(x.userId))
+  .map((x) => ({ userId: x.userId, chips: credited[x.userId] ?? 0, label: x.eval.label }));
  state.result = {
   type: "showdown",
   winnerIds: winners.map((w) => w.userId),
-  shares: awarded.shares,
+  shares,
   revealedUserIds: contenders.map((p) => p.userId),
   handRankLabel: best.eval.label,
+  winners,
  };
 }
 

@@ -63,6 +63,12 @@ export default defineSchema({
     lastActivityAt: v.number(),
     createdAt: v.number(),
     closedAt: v.optional(v.number()),
+    // Host pressed "End game" mid-hand: finish this hand, then → `waiting`.
+    stopAfterHand: v.optional(v.boolean()),
+    // Dropped to `waiting` only for lack of players: restart by itself once
+    // ≥ 2 seats qualify again. `resumeAt` = the pending restart's deal time.
+    autoResume: v.optional(v.boolean()),
+    resumeAt: v.optional(v.number()),
   })
     .index("by_status_visibility", ["status", "visibility"])
     .index("by_host", ["hostId"])

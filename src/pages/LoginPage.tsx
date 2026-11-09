@@ -1,119 +1,139 @@
-// /login — design/07 §2.2 (protocol in 03 §4.1/§4.2): username + private key
-// pasted or uploaded as the key file saved at registration; the local
-// fingerprint of the pasted key is displayed so the user can compare it with
-// the registration screen; every failure shows the same sentence (03 §4.3).
-import { useRef, useState } from "react";
+// Login: username + the private key (pasted, or the key file dropped/picked).
+// Every failure shows the same sentence (no username oracle, design/03 §4.3).
+import { DragEvent, FormEvent, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { USERNAME_MAX, USERNAME_MIN, USERNAME_REGEX } from "../../convex/lib/constants";
+import { USERNAME_REGEX } from "../../convex/lib/constants";
 import { describeSecretKey, parseKeyFile } from "../lib/keys";
-import { loginWithKeypair } from "../lib/auth";
-import { writeSessionToken } from "../lib/session";
-import { LobbyPage } from "./LobbyPage";
+import { loginWithKeypair, useSession } from "../lib/auth";
+import { Navigate } from "../lib/router";
 
-/** 03 §4.3: one sentence for every failure mode. */
 const GENERIC_FAILURE = "Login failed: unknown username or wrong key.";
 
-export function LoginPage({ navigate }: { navigate: (path: string) => void }) {
+/** The key file starts with a line naming the account; pick it up if present. */
+function usernameFromFile(text: string): string | undefined {
+  const m = /username\s*[:=]\s*([A-Za-z0-9_]{3,20})/i.exec(text);
+  return m === null ? undefined : m[1];
+}
+
+export function LoginPage({ navigate, afterAuth }: { navigate: Navigate; afterAuth: string }) {
   const requestChallenge = useMutation(api.auth.requestLoginChallenge);
   const login = useMutation(api.auth.login);
-  const usernameField = useRef<HTMLInputElement>(null);
-  const keyField = useRef<HTMLInputElement>(null);
-  const fileField = useRef<HTMLInputElement>(null);
-  const [fingerprint, setFingerprint] = useState<string | undefined>(undefined);
-  const [notice, setNotice] = useState<string | undefined>(undefined);
-  const [signedIn, setSignedIn] = useState<{ token: string; username: string; balance: number } | undefined>(undefined);
+  const session = useSession();
+  const [username, setUsername] = useState("");
+  const [key, setKey] = useState("");
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
-  // `keyOverride` lets an uploaded key file feed the same path as a paste.
-  async function submit(keyOverride: string | undefined): Promise<void> {
-    setNotice(undefined);
-    const username = (usernameField.current?.value ?? "").trim();
-    if (username.length < USERNAME_MIN || username.length > USERNAME_MAX || !USERNAME_REGEX.test(username)) {
-      setNotice(`usernames are ${USERNAME_MIN}–${USERNAME_MAX} characters of letters, digits and underscore`);
-      return;
-    }
-    const typed = keyOverride ?? parseKeyFile(keyField.current?.value ?? "");
-    if (typed === undefined) {
-      setNotice("Paste the npk_… key, or choose the key file you downloaded at registration.");
-      return;
-    }
+  const parsed = parseKeyFile(key);
+  let fingerprint: string | undefined = undefined;
+  if (parsed !== undefined) {
     try {
-      // 03 §4.2: the fingerprint of the pasted key is shown before the server
-      // is involved, which catches most wrong-key pastes locally.
-      const described = describeSecretKey(typed);
-      setFingerprint(described.fingerprint);
-      const signed = await loginWithKeypair(username, typed, requestChallenge, login);
-      const token = signed.sessionToken;
-      const user = signed.user;
-      if (token === undefined || token === null || user === undefined || user === null) {
-        setNotice(GENERIC_FAILURE);
-        return;
-      }
-      writeSessionToken(token);
-      setSignedIn({ token, username: user.username, balance: user.balance });
-    } catch (e) {
-      // never distinguish "no such user" from "bad signature" (03 §4.3)
-      setNotice(GENERIC_FAILURE);
+      fingerprint = describeSecretKey(parsed).fingerprint;
+    } catch {
+      fingerprint = undefined;
     }
   }
 
-  async function useUploadedFile(file: File): Promise<void> {
-    const body = await file.text();
-    const parsed = parseKeyFile(body);
-    if (parsed === undefined) {
-      setNotice("That file does not contain a nporkerd key — use the one you downloaded at registration.");
+  async function loadFile(file: File): Promise<void> {
+    const text = await file.text();
+    if (parseKeyFile(text) === undefined) {
+      setError("That file doesn't contain a nporkerd key.");
       return;
     }
-    await submit(parsed);
+    setError(undefined);
+    setKey(text);
+    const name = usernameFromFile(text);
+    if (name !== undefined && username === "") setUsername(name);
   }
 
-  if (signedIn !== undefined) {
-    // On success the lobby takes over (07 §2.2).
-    return (
-      <LobbyPage
-        token={signedIn.token}
-        username={signedIn.username}
-        balance={signedIn.balance}
-        navigate={() => navigate("/lobby")}
-      />
-    );
+  async function submit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    if (busy) return;
+    const name = username.trim();
+    if (!USERNAME_REGEX.test(name)) {
+      setError("Enter your username (3–20 letters, digits or underscores).");
+      return;
+    }
+    if (parsed === undefined || fingerprint === undefined) {
+      setError("Paste your npk_… key or drop the key file you downloaded.");
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const { token } = await loginWithKeypair(name, parsed, requestChallenge, login);
+      session.signIn(token);
+      navigate(afterAuth, { replace: true });
+    } catch {
+      setError(GENERIC_FAILURE);
+      setBusy(false);
+    }
+  }
+
+  function onDrop(e: DragEvent): void {
+    e.preventDefault();
+    setOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file !== undefined) void loadFile(file);
   }
 
   return (
-    <div className="np-card">
-      <h2 className="np-title">Log in</h2>
-      <div className="np-field">
-        <label>Username</label>
-        <input ref={usernameField} type="text" />
-      </div>
-      <div className="np-field">
-        <label>Private key (paste it — it starts with npk_)</label>
-        <input ref={keyField} type="text" />
-      </div>
-      <div className="np-field">
-        <label>Or choose the key file from registration</label>
-        <input
-          ref={fileField}
-          type="file"
-          onChange={(event) => {
-            const picked = (event.target as HTMLInputElement).files;
-            if (picked === null || picked === undefined) {
-              return;
-            }
-            if (picked.length > 0) {
-              void useUploadedFile(picked[0]);
-            }
-          }}
-        />
-      </div>
-      {fingerprint === undefined ? null : (
-        <div className="np-muted">Key fingerprint: {fingerprint} — compare it with the one shown at registration.</div>
-      )}
-      {notice === undefined ? null : <div className="np-error">{notice}</div>}
-      <button type="button" onClick={() => void submit(undefined)}>Log in</button>
-      <div className="np-muted">
-        No account yet? <span className="np-muted">open /register to create one.</span>
-      </div>
+    <div className="auth-wrap">
+      <form className="panel panel-pad stack" onSubmit={(e) => void submit(e)}>
+        <h1 className="panel-title">Welcome back</h1>
+        <label className="field">
+          <span>Username</span>
+          <input className="input" autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Private key</span>
+          <textarea
+            className="textarea"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="npk_…"
+            spellCheck={false}
+            autoComplete="off"
+          />
+          {fingerprint !== undefined ? (
+            <small>Key fingerprint <span className="fingerprint">{fingerprint}</span></small>
+          ) : key.trim() !== "" ? <small className="error-text">This doesn't look like a nporkerd key yet.</small> : null}
+        </label>
+        <div
+          className={`dropzone${over ? " over" : ""}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => fileInput.current?.click()}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInput.current?.click(); }}
+          onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+          onDragLeave={() => setOver(false)}
+          onDrop={onDrop}
+        >
+          <span>📄 Drop your key file here, or click to choose it</span>
+          <span className="faint">nporkerd-key-&lt;name&gt;.txt</span>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".txt,text/plain"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f !== undefined) void loadFile(f);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {error === undefined ? null : <div className="error-text" role="alert">{error}</div>}
+        <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
+          {busy ? "Verifying…" : "Log in"}
+        </button>
+        <div className="auth-switch">
+          New here? <button type="button" className="link-btn" onClick={() => navigate("/register")}>Create an account</button>
+        </div>
+      </form>
     </div>
   );
 }

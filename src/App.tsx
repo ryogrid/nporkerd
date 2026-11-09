@@ -1,147 +1,125 @@
-// The SPA shell — design/07 §1: four views keyed by the URL *path*, not by a
-// hash (real paths like /room/<id> work on reload because the static host
-// falls back to index.html). Routing is state-based: the current path lives in
-// one useState, seeded from `location.pathname`, and every page gets a
-// `navigate` callback so a hand-off never forces a reload. The session gate is
-// `useSession()` (07 §1/03 §5): the token in sessionStorage plus `auth.me`;
-// lobby and room are only rendered for a signed-in viewer, otherwise the page
-// chooser is shown. The stylesheet is rendered once as a <style> element so the
-// built bundle needs no extra asset (07 §1: CSS only, no image assets).
-import { useState } from "react";
-import { useSession, MeProfile } from "./lib/auth";
-import { readSessionToken } from "./lib/session";
-import { THEME_CSS } from "./lib/themeCss";
+// App shell: top bar, routing, and the session gate. Lobby and room need a
+// validated session; visitors who open a table link are sent back to it after
+// logging in.
+import { useEffect } from "react";
+import { useSession } from "./lib/auth";
+import { parseRoute, usePath } from "./lib/router";
+import { HomePage } from "./pages/HomePage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { RoomPage } from "./pages/RoomPage";
+import { SoundControl } from "./components/SoundControl";
+import { Chip } from "./components/Chips";
+import { formatChips } from "./lib/format";
+import { unlockAudio } from "./lib/sound";
 import { Id } from "../convex/_generated/dataModel";
 
-/** One of the four views per path (07 §1). `/` falls back to the lobby gate. */
-type Route = { page: "register" | "login" | "lobby" | "room"; roomId?: string };
+const RETURN_KEY = "nporkerd.returnTo";
 
-function normalizePath(path: string): string {
-  const withoutTrailing = path.replace(/\/+$/, "");
-  return withoutTrailing === "" ? "/" : withoutTrailing;
+function readReturn(): string {
+  try {
+    return sessionStorage.getItem(RETURN_KEY) ?? "/lobby";
+  } catch {
+    return "/lobby";
+  }
 }
 
-function parseRoute(path: string): Route {
-  const parts = normalizePath(path).split("/").filter((p) => p !== "");
-  if (parts.length === 0) {
-    return { page: "lobby" };
+function writeReturn(path: string | undefined): void {
+  try {
+    if (path === undefined) sessionStorage.removeItem(RETURN_KEY);
+    else sessionStorage.setItem(RETURN_KEY, path);
+  } catch {
+    // ignore
   }
-  const head = parts[0].toLowerCase();
-  if (head === "room" && parts.length >= 2) {
-    return { page: "room", roomId: parts[1] };
-  }
-  if (head === "register") {
-    return { page: "register" };
-  }
-  if (head === "login") {
-    return { page: "login" };
-  }
-  return { page: "lobby" };
 }
 
 export function App() {
   const session = useSession();
-  const [path, setPath] = useState<string>(() => normalizePath(location.pathname));
-
-  function navigate(next: string): void {
-    setPath(normalizePath(next));
-  }
-
+  const [path, navigate] = usePath();
   const route = parseRoute(path);
-  const profile: MeProfile | undefined = session.profile;
-  const storedToken: string | undefined =
-    session.token === undefined ? readSessionToken() : session.token;
+  const signedIn = session.status === "signed-in" && session.me !== undefined && session.token !== undefined;
 
-  // Non-auth pages need no session; lobby and room do (07 §1, 03 §5).
-  if (route.page === "register") {
-    return (
-      <>
-        <style>{THEME_CSS}</style>
-        <div className="np-app">
-          <RegisterPage navigate={navigate} />
-        </div>
-      </>
-    );
-  }
-  if (route.page === "login") {
-    return (
-      <>
-        <style>{THEME_CSS}</style>
-        <div className="np-app">
-          <LoginPage navigate={navigate} />
-        </div>
-      </>
-    );
-  }
+  // browsers only allow audio after a gesture: unlock on the first one
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
-  // The gate: lobby and room render only for a validated session (07 §1).
-  if (session.status !== "signed-in" || profile === undefined || storedToken === undefined) {
-    const checking = session.status === "pending";
-    return (
-      <>
-        <style>{THEME_CSS}</style>
-        <div className="np-app">
-          <div className="np-card">
-            {checking ? <div className="np-muted">checking the stored session…</div> : null}
-            <h1 className="np-title">nporkerd</h1>
-            <div className="np-muted">
-              {session.status === "invalid"
-                ? "The session stored in this tab is no longer valid — sign in again."
-                : "Nobody is signed in in this tab yet."}
-            </div>
-            <div className="np-actions">
-              <a
-                href="/register"
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigate("/register");
-                }}
-              >
-                create an account
-              </a>
-              <a
-                href="/login"
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigate("/login");
-                }}
-              >
-                log in with a key
-              </a>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
+  // remember where a signed-out visitor was heading (e.g. an invite link)
+  useEffect(() => {
+    if (session.status === "anonymous" && route.page === "room") writeReturn(path);
+  }, [session.status, route.page, path]);
 
-  if (route.page === "room" && route.roomId !== undefined) {
-    const roomId = route.roomId as Id<"rooms">;
-    return (
-      <>
-        <style>{THEME_CSS}</style>
-        <div className="np-app">
-          <RoomPage roomId={roomId} token={storedToken} me={profile} navigate={navigate} />
-        </div>
-      </>
-    );
+  // signed-in users skip the landing/auth screens
+  useEffect(() => {
+    if (signedIn && (route.page === "home" || route.page === "login" || route.page === "register")) {
+      navigate("/lobby", { replace: true });
+    }
+  }, [signedIn, route.page, navigate]);
+
+  // once signed in, honour a pending invite link
+  const afterAuth = readReturn();
+  useEffect(() => {
+    if (signedIn) writeReturn(undefined);
+  }, [signedIn]);
+
+  useEffect(() => {
+    document.title = route.page === "room" ? "Table · nporkerd" : "nporkerd — Texas Hold'em";
+  }, [route.page]);
+
+  let content;
+  if (session.status === "pending") {
+    content = <div className="center-screen"><div className="spinner" /></div>;
+  } else if (route.page === "register" && !signedIn) {
+    content = <RegisterPage navigate={navigate} afterAuth={afterAuth} />;
+  } else if (route.page === "login" && !signedIn) {
+    content = <LoginPage navigate={navigate} afterAuth={afterAuth} />;
+  } else if (!signedIn || session.me === undefined || session.token === undefined) {
+    content = <HomePage navigate={navigate} expired={session.expired} invited={route.page === "room"} />;
+  } else if (route.page === "room") {
+    content = <RoomPage key={route.roomId} roomId={route.roomId as Id<"rooms">} token={session.token} me={session.me} navigate={navigate} />;
+  } else {
+    content = <LobbyPage token={session.token} me={session.me} navigate={navigate} />;
   }
 
   return (
-    <>
-      <style>{THEME_CSS}</style>
-      <div className="np-app">
-        <LobbyPage
-          token={storedToken}
-          username={profile.username}
-          balance={profile.balance}
-          navigate={navigate}
-        />
-      </div>
-    </>
+    <div className="app">
+      <header className="topbar">
+        <button type="button" className="brand" onClick={() => navigate(signedIn ? "/lobby" : "/")}>
+          <span className="brand-mark">♠</span>
+          <span className="full">npork<em>erd</em></span>
+        </button>
+        <span className="topbar-spacer" />
+        <SoundControl />
+        {signedIn && session.me !== undefined ? (
+          <>
+            <span className="balance-pill nums" title="Your bankroll">
+              <Chip color="c-gold" />
+              {formatChips(session.me.balance)}
+            </span>
+            <span className="user-pill"><strong>{session.me.username}</strong></span>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => {
+                void session.signOut();
+                navigate("/", { replace: true });
+              }}
+            >
+              Log out
+            </button>
+          </>
+        ) : route.page !== "login" ? (
+          <button type="button" className="btn btn-sm" onClick={() => navigate("/login")}>Log in</button>
+        ) : null}
+      </header>
+      <main className="main">{content}</main>
+    </div>
   );
 }

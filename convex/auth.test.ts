@@ -31,12 +31,14 @@ function errorCodeOf(e: unknown): string {
 }
 
 async function expectError(fn: () => Promise<unknown>, code: string) {
+  let threw = false;
   try {
     await fn();
-    expect(code).toBe("did not throw");
   } catch (e) {
+    threw = true;
     expect(errorCodeOf(e)).toContain(code);
   }
+  expect(threw, "expected the call to throw").toBe(true);
 }
 
 function codeOf(result: unknown): string {
